@@ -6,5 +6,5 @@ import "context"
 // and resilience decorator.
 type FlightProvider interface {
 	Name() string
-	Search(ctx context.Context, criteria SearchCriteria) ([]Flight, error)
+	SearchFlights(ctx context.Context, criteria SearchCriteria) ([]Flight, error)
 }

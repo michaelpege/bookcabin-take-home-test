@@ -58,9 +58,9 @@ make test-integration
 ## 5. How to Add a New Airline Provider (4 Steps)
 
 1. Create `internal/provider/<airline>/` with `client.go`, `normalizer.go`, `client_test.go`, and `testdata/`.
-2. Implement `domain.FlightProvider` (`Name()`, `Search(ctx, domain.SearchCriteria)`), respecting `ctx.Done()` during any simulated delay.
+2. Implement `domain.FlightProvider` (`Name()`, `SearchFlights(ctx, domain.SearchCriteria)`), respecting `ctx.Done()` during any simulated delay.
 3. Run the shared `providertest` contract suite in `client_test.go`.
-4. Register the provider + its `ProviderSLA` config in `cmd/api/main.go` wrapped with `ResilientProvider`.
+4. Register the provider + its `ResiliencePolicy` config in `cmd/api/main.go` wrapped with `ResilientProvider`.
 
 ## 6. Additional Docs (Load On-Demand)
 
