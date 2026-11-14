@@ -6,7 +6,7 @@
 1. **`api`**: Multi-stage Go build (`golang:alpine` builder -> `alpine` non-root runtime).
    - Embeds Go timezone database via `import _ "time/tzdata"` so `Asia/Jakarta` (WIB), `Asia/Makassar` (WITA), and `Asia/Jayapura` (WIT) resolve without OS tzdata packages.
    - Exposes `8080` with `/health` healthcheck.
-2. **`redis`**: `redis:7-alpine` with `redis-cli ping` healthcheck.
+2. **`redis`**: `redis:8-alpine` with `redis-cli ping` healthcheck.
 
 ## Cache Taxonomy (Implemented in C9)
 

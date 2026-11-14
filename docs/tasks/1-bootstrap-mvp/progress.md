@@ -12,8 +12,8 @@ Track commit-by-commit progress so any fresh agent session can resume immediatel
 | **C5** | Lion Air provider adapter + fixture tests + `main.go` wiring | **Done** (PR #12) | `go test -race ./internal/provider/lion/...` |
 | **C6** | Batik Air provider adapter + fixture tests + shared `provider` helpers + `main.go` wiring | **Done** (PR #14) | `go test -race ./internal/provider/batik/...` |
 | **C7** | AirAsia provider adapter (90% SLA simulation) + fixture tests + `main.go` wiring | **Done** (PR #16) | `go test -race ./internal/provider/airasia/...` |
-| **C8** | `internal/usecase` (filter, sorter, comparator, ranker + `fetchProviderOutcomes` refactor) + `-race` tests | **PR Open** (Issue #17) | `go test -race ./internal/usecase/...` |
-| **C9** | `internal/repository/redis` (2-tier write-through cache) + `POST /api/v1/flights/search` | Pending | `make check && make test-integration` |
+| **C8** | `internal/usecase` (filter, sorter, comparator, ranker + `fetchProviderOutcomes` refactor) + `-race` tests | **Done** (PR #18) | `go test -race ./internal/usecase/...` |
+| **C9** | `internal/repository/redis` (2-tier write-through cache) + `POST /api/v1/flights/search` | **PR Open** (Issue #19) | `make check && make test-integration` |
 | **C10** | Final `README.md` (curl examples, complexity analysis, design choices) + benchmarks | Pending | `go test -bench=. ./...` |
 
 ## Planned Notes & Follow-Ups
