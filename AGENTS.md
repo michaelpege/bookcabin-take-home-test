@@ -31,7 +31,14 @@ docs/                         # setup.md, infrastructure.md, architecture.md, ta
 6. **Non-nil JSON slices**: Initialize empty slices (`[]string{}`) so JSON marshals as `[]`, never `null`.
 7. **Timezone Embedding**: Keep `import _ "time/tzdata"` in `cmd/api/main.go` and `timeutil` so `Asia/Jakarta`, `Asia/Makassar`, and `Asia/Jayapura` work in minimal containers.
 
-## 3. Mandatory Verification Before Every Commit
+## 3. Go Code Style & Domain Conventions
+
+- **Struct Field Ordering**: Order fields logically by domain concept (identity, route/schedule, duration, pricing, metadata) rather than alphabetically.
+- **Composable Validation**: Give value-object structs (`Airline`, `LocationPoint`, `DurationInfo`, `PriceInfo`) their own `Validate() error` methods and compose them inside the parent entity's `Validate()`, keeping cross-field invariants at the parent level.
+- **Error Placement**: Consolidate domain and boundary sentinel errors in `internal/domain/errors.go`, grouped into separate `var (...)` blocks by category (validation vs boundary).
+- **Concise Stdlib Helpers**: Prefer clean, branch-free standard-library loops (e.g., `strings.Builder` with modulo grouping) over over-branched special cases.
+
+## 4. Mandatory Verification Before Every Commit
 
 Run:
 ```bash
@@ -48,14 +55,14 @@ For Redis integration tests (requires Docker / Redis):
 make test-integration
 ```
 
-## 4. How to Add a New Airline Provider (4 Steps)
+## 5. How to Add a New Airline Provider (4 Steps)
 
 1. Create `internal/provider/<airline>/` with `client.go`, `normalizer.go`, `client_test.go`, and `testdata/`.
 2. Implement `domain.FlightProvider` (`Name()`, `Search(ctx, domain.SearchCriteria)`), respecting `ctx.Done()` during any simulated delay.
 3. Run the shared `providertest` contract suite in `client_test.go`.
 4. Register the provider + its `ProviderSLA` config in `cmd/api/main.go` wrapped with `ResilientProvider`.
 
-## 5. Additional Docs (Load On-Demand)
+## 6. Additional Docs (Load On-Demand)
 
 - [README.md](README.md) — Overview, API contract, quickstart
 - [docs/setup.md](docs/setup.md) — Local Go/Docker/Redis setup & env vars
