@@ -2,7 +2,15 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
+)
+
+var (
+	// ErrProviderUnavailable indicates an upstream airline provider failed or timed out.
+	ErrProviderUnavailable = errors.New("provider unavailable")
+	// ErrCacheMiss indicates the requested key is not present in the cache.
+	ErrCacheMiss = errors.New("cache miss")
 )
 
 // FlightProvider defines the outbound port implemented by each airline adapter
