@@ -19,12 +19,22 @@ import (
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider/batik"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider/garuda"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider/lion"
+	rediscache "github.com/michaelpege/bookcabin-take-home-test/internal/repository/redis"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/usecase"
 )
 
 func main() {
 	cfg := config.Load()
 	log := logger.New(cfg.LogLevel)
+
+	redisCache := rediscache.NewFlightCache(cfg.RedisAddr)
+	defer func() { _ = redisCache.Close() }()
+
+	if err := redisCache.Ping(context.Background()); err != nil {
+		log.Warn("redis_unavailable_fail_open", slog.String("addr", cfg.RedisAddr), slog.String("error", err.Error()))
+	} else {
+		log.Info("redis_connected", slog.String("addr", cfg.RedisAddr))
+	}
 
 	policies := provider.DefaultPolicies()
 	garudaClient := garuda.NewClient()
@@ -37,7 +47,12 @@ func main() {
 		provider.NewResilientProvider(batikClient, policies[batikClient.Name()]),
 		provider.NewResilientProvider(airasiaClient, policies[airasiaClient.Name()]),
 	}
-	flightAggregator := usecase.NewFlightAggregator(providers, log)
+	flightAggregator := usecase.NewFlightAggregator(
+		providers,
+		log,
+		usecase.WithCache(redisCache),
+		usecase.WithCacheTTLs(cfg.CacheBaseTTL, cfg.CacheProviderTTL),
+	)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
