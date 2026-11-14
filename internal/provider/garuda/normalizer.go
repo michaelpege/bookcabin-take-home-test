@@ -8,17 +8,8 @@ import (
 	"github.com/michaelpege/bookcabin-take-home-test/internal/domain"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/platform/currency"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/platform/timeutil"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
 )
-
-var airportCities = map[string]string{
-	"CGK": "Jakarta",
-	"DPS": "Denpasar",
-	"SUB": "Surabaya",
-	"SOC": "Solo",
-	"UPG": "Makassar",
-	"JOG": "Yogyakarta",
-	"YIA": "Yogyakarta",
-}
 
 func (rf rawFlight) toDomain(providerName string) (domain.Flight, error) {
 	depRaw, arrRaw, stops := resolveRouteEndpoints(rf)
@@ -64,13 +55,13 @@ func (rf rawFlight) toDomain(providerName string) (domain.Flight, error) {
 		FlightNumber: rf.FlightID,
 		Departure: domain.LocationPoint{
 			Airport:   depRaw.Airport,
-			City:      resolveCity(depRaw),
+			City:      provider.ResolveCity(depRaw.Airport, depRaw.City),
 			Datetime:  depTime.Format(time.RFC3339),
 			Timestamp: depTime.Unix(),
 		},
 		Arrival: domain.LocationPoint{
 			Airport:   arrRaw.Airport,
-			City:      resolveCity(arrRaw),
+			City:      provider.ResolveCity(arrRaw.Airport, arrRaw.City),
 			Datetime:  arrTime.Format(time.RFC3339),
 			Timestamp: arrTime.Unix(),
 		},
@@ -105,16 +96,6 @@ func resolveRouteEndpoints(rf rawFlight) (dep, arr rawEndpoint, stops int) {
 		first.City = rf.Departure.City
 	}
 	return first, last, len(rf.Segments) - 1
-}
-
-func resolveCity(ep rawEndpoint) string {
-	if strings.TrimSpace(ep.City) != "" {
-		return ep.City
-	}
-	if city, ok := airportCities[strings.ToUpper(strings.TrimSpace(ep.Airport))]; ok {
-		return city
-	}
-	return ep.Airport
 }
 
 func formatPieces(count int) string {
