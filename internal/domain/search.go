@@ -109,7 +109,9 @@ func isValidIATACode(code string) bool {
 	}
 	for i := 0; i < 3; i++ {
 		c := code[i]
-		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+		isUpper := c >= 'A' && c <= 'Z'
+		isLower := c >= 'a' && c <= 'z'
+		if !isUpper && !isLower {
 			return false
 		}
 	}
