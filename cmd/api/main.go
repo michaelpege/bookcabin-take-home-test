@@ -25,9 +25,11 @@ func main() {
 	log := logger.New(cfg.LogLevel)
 
 	policies := provider.DefaultPolicies()
+	garudaClient := garuda.NewClient()
+	lionClient := lion.NewClient()
 	providers := []domain.FlightProvider{
-		provider.NewResilientProvider(garuda.NewClient(), policies[garuda.ProviderName]),
-		provider.NewResilientProvider(lion.NewClient(), policies[lion.ProviderName]),
+		provider.NewResilientProvider(garudaClient, policies[garudaClient.Name()]),
+		provider.NewResilientProvider(lionClient, policies[lionClient.Name()]),
 	}
 	flightAggregator := usecase.NewFlightAggregator(providers, log)
 

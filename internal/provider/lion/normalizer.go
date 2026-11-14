@@ -10,7 +10,7 @@ import (
 	"github.com/michaelpege/bookcabin-take-home-test/internal/platform/timeutil"
 )
 
-func normalizeFlight(rf rawFlight) (domain.Flight, error) {
+func (rf rawFlight) toDomain(providerName string) (domain.Flight, error) {
 	depTime, err := timeutil.ParseTimestamp(rf.Schedule.Departure, rf.Schedule.DepartureTimezone)
 	if err != nil {
 		return domain.Flight{}, fmt.Errorf("parse departure time for %s: %w", rf.ID, err)
@@ -44,8 +44,8 @@ func normalizeFlight(rf rawFlight) (domain.Flight, error) {
 	}
 
 	return domain.Flight{
-		ID:       fmt.Sprintf("%s_%s", rf.ID, ProviderName),
-		Provider: ProviderName,
+		ID:       fmt.Sprintf("%s_%s", rf.ID, providerName),
+		Provider: providerName,
 		Airline: domain.Airline{
 			Name: rf.Carrier.Name,
 			Code: rf.Carrier.IATA,

@@ -9,7 +9,7 @@ import (
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
 )
 
-const ProviderName = "Lion Air"
+const defaultProviderName = "Lion Air"
 
 //go:embed testdata/search_response.json
 var defaultPayload []byte
@@ -41,6 +41,7 @@ func WithAuth(auth provider.Authenticator) Option {
 
 // Client is the Lion Air FlightProvider adapter.
 type Client struct {
+	name     string
 	auth     provider.Authenticator
 	payload  []byte
 	minDelay time.Duration
@@ -51,6 +52,7 @@ type Client struct {
 // and mock API-key authentication.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
+		name:     defaultProviderName,
 		auth:     provider.APIKeyAuth{HeaderName: "X-API-Key", Key: "mock-lion-api-key"},
 		payload:  defaultPayload,
 		minDelay: 100 * time.Millisecond,
@@ -64,7 +66,7 @@ func NewClient(opts ...Option) *Client {
 
 // Name returns the canonical provider name.
 func (c *Client) Name() string {
-	return ProviderName
+	return c.name
 }
 
 func (c *Client) simulateDelay(ctx context.Context) error {

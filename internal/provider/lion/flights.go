@@ -29,7 +29,7 @@ func (c *Client) SearchFlights(ctx context.Context, criteria domain.SearchCriter
 
 	results := make([]domain.Flight, 0, len(rawFlights))
 	for _, rf := range rawFlights {
-		flight, err := normalizeFlight(rf)
+		flight, err := rf.toDomain(c.name)
 		if err != nil {
 			continue
 		}
