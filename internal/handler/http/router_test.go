@@ -1,20 +1,30 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/michaelpege/bookcabin-take-home-test/internal/domain"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/usecase"
 )
+
+type noopSearchService struct{}
+
+func (noopSearchService) SearchFlights(context.Context, domain.SearchCriteria, usecase.SearchOptions) (domain.SearchResult, error) {
+	return domain.SearchResult{}, nil
+}
 
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))
 }
 
 func TestPingEndpoint(t *testing.T) {
-	router := NewRouter(newTestLogger())
+	router := NewRouter(newTestLogger(), noopSearchService{})
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	rec := httptest.NewRecorder()
 
@@ -37,7 +47,7 @@ func TestPingEndpoint(t *testing.T) {
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	router := NewRouter(newTestLogger())
+	router := NewRouter(newTestLogger(), noopSearchService{})
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 
@@ -63,7 +73,7 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestMethodNotAllowedOnPing(t *testing.T) {
-	router := NewRouter(newTestLogger())
+	router := NewRouter(newTestLogger(), noopSearchService{})
 	req := httptest.NewRequest(http.MethodPost, "/ping", nil)
 	rec := httptest.NewRecorder()
 

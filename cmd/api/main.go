@@ -10,18 +10,28 @@ import (
 	"syscall"
 	_ "time/tzdata" // Embed IANA timezone database for minimal container runtimes.
 
+	"github.com/michaelpege/bookcabin-take-home-test/internal/domain"
 	httphandler "github.com/michaelpege/bookcabin-take-home-test/internal/handler/http"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/platform/config"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/platform/logger"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/provider/garuda"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/usecase"
 )
 
 func main() {
 	cfg := config.Load()
 	log := logger.New(cfg.LogLevel)
 
+	policies := provider.DefaultPolicies()
+	providers := []domain.FlightProvider{
+		provider.NewResilientProvider(garuda.NewClient(), policies[garuda.ProviderName]),
+	}
+	flightAggregator := usecase.NewFlightAggregator(providers, log)
+
 	srv := &http.Server{
 		Addr:         ":" + cfg.Port,
-		Handler:      httphandler.NewRouter(log),
+		Handler:      httphandler.NewRouter(log, flightAggregator),
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 	}
