@@ -46,32 +46,48 @@ func matchesFilter(
 	arrWindow timeWindowMinutes,
 	hasArrWindow bool,
 ) bool {
-	if opts.MinPrice != nil && f.Price.Amount < *opts.MinPrice {
+	belowMinPrice := opts.MinPrice != nil && f.Price.Amount < *opts.MinPrice
+	if belowMinPrice {
 		return false
 	}
-	if opts.MaxPrice != nil && f.Price.Amount > *opts.MaxPrice {
+
+	aboveMaxPrice := opts.MaxPrice != nil && f.Price.Amount > *opts.MaxPrice
+	if aboveMaxPrice {
 		return false
 	}
+
 	if len(stopsSet) > 0 {
-		if _, ok := stopsSet[f.Stops]; !ok {
+		_, stopsIncluded := stopsSet[f.Stops]
+		if !stopsIncluded {
 			return false
 		}
 	}
-	if opts.MaxStops != nil && f.Stops > *opts.MaxStops {
+
+	exceedsMaxStops := opts.MaxStops != nil && f.Stops > *opts.MaxStops
+	if exceedsMaxStops {
 		return false
 	}
-	if opts.MaxDurationMinutes != nil && f.Duration.TotalMinutes > *opts.MaxDurationMinutes {
+
+	exceedsMaxDuration := opts.MaxDurationMinutes != nil && f.Duration.TotalMinutes > *opts.MaxDurationMinutes
+	if exceedsMaxDuration {
 		return false
 	}
-	if len(airlineSet) > 0 && !matchesAirline(f, airlineSet) {
+
+	airlineExcluded := len(airlineSet) > 0 && !matchesAirline(f, airlineSet)
+	if airlineExcluded {
 		return false
 	}
-	if hasDepWindow && !matchesTimeWindow(f.Departure.Datetime, depWindow) {
+
+	outsideDepartureWindow := hasDepWindow && !matchesTimeWindow(f.Departure.Datetime, depWindow)
+	if outsideDepartureWindow {
 		return false
 	}
-	if hasArrWindow && !matchesTimeWindow(f.Arrival.Datetime, arrWindow) {
+
+	outsideArrivalWindow := hasArrWindow && !matchesTimeWindow(f.Arrival.Datetime, arrWindow)
+	if outsideArrivalWindow {
 		return false
 	}
+
 	return true
 }
 

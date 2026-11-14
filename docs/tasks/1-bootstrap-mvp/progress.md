@@ -17,5 +17,6 @@ Track commit-by-commit progress so any fresh agent session can resume immediatel
 | **C10** | Final `README.md` (curl examples, complexity analysis, design choices) + benchmarks | Pending | `go test -bench=. ./...` |
 
 ## Planned Notes & Follow-Ups
-- **C8 (`internal/usecase/aggregator.go`)**: Extract `fetchProviderOutcomes(ctx, criteria) []providerOutcome` out of `FlightAggregator.SearchFlights` when wiring Filter/Sort/Best-Value Ranking so concurrency scatter-gather stays cleanly isolated from high-level search orchestration.
+- **C8 (`internal/usecase/flight_aggregator.go`)**: Extracted `fetchProviderOutcomes(ctx, criteria) []providerOutcome` out of `FlightAggregator.SearchFlights` when wiring `flight_filter.go`, `price_comparison.go`, `best_value_ranker.go`, and `flight_sorter.go` so concurrency scatter-gather stays cleanly isolated from high-level search orchestration.
 - **C9 (`internal/repository/redis`)**: Skip caching (or avoid long TTLs) on partial/degraded responses (`providers_failed > 0`) so transient provider failures are not cached.
+- **Future Enhancement (Stage-A Provider Filter/Sort Pushdown)**: Extend `domain.FlightProvider` / provider adapters to forward natively supported `FilterOptions` and `SortBy` parameters to each 3rd-party provider API prior to running the authoritative post-aggregation `FilterFlights` and `SortFlights` pipeline on the merged results.
