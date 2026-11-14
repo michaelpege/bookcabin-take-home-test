@@ -125,6 +125,10 @@ curl -s -X POST http://localhost:8080/api/v1/flights/search \
 
 *(Note: After Example 1 populates L1 in Redis, Example 2 serves from warm cache with `metadata.cache_hit: true` even with new `filters` and `sortBy` values.)*
 
+### 3. Postman Collection
+
+Import [docs/postman/bookcabin-flight-aggregator.postman_collection.json](docs/postman/bookcabin-flight-aggregator.postman_collection.json) into Postman (set `baseUrl` if not using `http://localhost:8080`). It includes pre-configured requests and Postman test assertions for `/ping`, `/health`, default `price_asc`, `best_value`, `duration_asc`, multi-predicate filters, empty `[]` array serialization, and `400` validation errors.
+
 ---
 
 ## Performance, Complexity & Benchmarks
@@ -193,4 +197,5 @@ go test -bench=. -benchmem -run=^$ ./internal/usecase/...  # Run usecase microbe
 - [docs/setup.md](docs/setup.md) — Local setup & environment variables
 - [docs/infrastructure.md](docs/infrastructure.md) — Container topology & Redis 8 cache keys
 - [docs/architecture.md](docs/architecture.md) — Layer rules & resilience decisions
+- [docs/postman/bookcabin-flight-aggregator.postman_collection.json](docs/postman/bookcabin-flight-aggregator.postman_collection.json) — Postman v2.1 collection with endpoint examples & test scripts
 - [docs/tasks/1-bootstrap-mvp/progress.md](docs/tasks/1-bootstrap-mvp/progress.md) — Commit-by-commit milestone tracker & follow-up roadmap
