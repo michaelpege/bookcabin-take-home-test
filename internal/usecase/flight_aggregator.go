@@ -38,9 +38,9 @@ type providerOutcome struct {
 	durationMS int64
 }
 
-// SearchFlights validates criteria, fans out concurrently to all providers using
-// isolated contexts, logs per-provider latency, and returns unified results.
-func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.SearchCriteria, _ SearchOptions) (domain.SearchResult, error) {
+// SearchFlights validates criteria, fans out concurrently to all providers,
+// validates, filters, compares, scores, and sorts results cleanly.
+func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.SearchCriteria, opts SearchOptions) (domain.SearchResult, error) {
 	if err := criteria.Validate(); err != nil {
 		return domain.SearchResult{}, err
 	}
@@ -48,12 +48,40 @@ func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.Se
 	start := time.Now()
 	traceID := logger.TraceIDFromContext(ctx)
 
-	outcomes := make(chan providerOutcome, len(a.providers))
+	outcomes := a.fetchProviderOutcomes(ctx, criteria)
+	aggregated, meta := a.collectOutcomes(traceID, outcomes)
+
+	if len(a.providers) > 0 && meta.ProvidersSucceeded == 0 {
+		meta.SearchTimeMS = time.Since(start).Milliseconds()
+		return domain.SearchResult{
+			SearchCriteria: criteria,
+			Metadata:       meta,
+			Flights:        aggregated,
+		}, domain.ErrAllProvidersFailed
+	}
+
+	filtered := FilterFlights(aggregated, opts.Filters)
+	ComparePrices(filtered)
+	ScoreBestValue(filtered)
+	SortFlights(filtered, opts.SortBy)
+
+	meta.TotalResults = len(filtered)
+	meta.SearchTimeMS = time.Since(start).Milliseconds()
+
+	return domain.SearchResult{
+		SearchCriteria: criteria,
+		Metadata:       meta,
+		Flights:        filtered,
+	}, nil
+}
+
+func (a *FlightAggregator) fetchProviderOutcomes(ctx context.Context, criteria domain.SearchCriteria) []providerOutcome {
+	outcomes := make([]providerOutcome, len(a.providers))
 	var wg sync.WaitGroup
 
-	for _, p := range a.providers {
+	for i, p := range a.providers {
 		wg.Add(1)
-		go func(prov domain.FlightProvider) {
+		go func(idx int, prov domain.FlightProvider) {
 			defer wg.Done()
 			pStart := time.Now()
 
@@ -66,24 +94,26 @@ func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.Se
 			}
 
 			flights, err := prov.SearchFlights(pCtx, criteria)
-			outcomes <- providerOutcome{
+			outcomes[idx] = providerOutcome{
 				provider:   prov.Name(),
 				flights:    flights,
 				err:        err,
 				durationMS: time.Since(pStart).Milliseconds(),
 			}
-		}(p)
+		}(i, p)
 	}
 
 	wg.Wait()
-	close(outcomes)
+	return outcomes
+}
 
+func (a *FlightAggregator) collectOutcomes(traceID string, outcomes []providerOutcome) ([]domain.Flight, domain.SearchMetadata) {
 	aggregated := make([]domain.Flight, 0)
 	providerErrors := make(map[string]string)
 	succeeded := 0
 	failed := 0
 
-	for out := range outcomes {
+	for _, out := range outcomes {
 		if out.err != nil {
 			failed++
 			providerErrors[out.provider] = out.err.Error()
@@ -128,23 +158,12 @@ func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.Se
 		providerErrors = nil
 	}
 
-	res := domain.SearchResult{
-		SearchCriteria: criteria,
-		Metadata: domain.SearchMetadata{
-			TotalResults:       len(aggregated),
-			ProvidersQueried:   len(a.providers),
-			ProvidersSucceeded: succeeded,
-			ProvidersFailed:    failed,
-			SearchTimeMS:       time.Since(start).Milliseconds(),
-			CacheHit:           false,
-			ProviderErrors:     providerErrors,
-		},
-		Flights: aggregated,
+	meta := domain.SearchMetadata{
+		TotalResults:       len(aggregated),
+		ProvidersQueried:   len(a.providers),
+		ProvidersSucceeded: succeeded,
+		ProvidersFailed:    failed,
+		ProviderErrors:     providerErrors,
 	}
-
-	if len(a.providers) > 0 && succeeded == 0 {
-		return res, domain.ErrAllProvidersFailed
-	}
-
-	return res, nil
+	return aggregated, meta
 }

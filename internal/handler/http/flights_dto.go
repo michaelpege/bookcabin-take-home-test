@@ -8,13 +8,14 @@ import (
 // SearchFlightsRequest matches the PDF take-home Search Request JSON contract
 // (camelCase inputs) while allowing optional filter/sort extensions.
 type SearchFlightsRequest struct {
-	Origin        string  `json:"origin"`
-	Destination   string  `json:"destination"`
-	DepartureDate string  `json:"departureDate"`
-	ReturnDate    *string `json:"returnDate"`
-	Passengers    int     `json:"passengers"`
-	CabinClass    string  `json:"cabinClass"`
-	SortBy        string  `json:"sortBy,omitempty"`
+	Origin        string                `json:"origin"`
+	Destination   string                `json:"destination"`
+	DepartureDate string                `json:"departureDate"`
+	ReturnDate    *string               `json:"returnDate"`
+	Passengers    int                   `json:"passengers"`
+	CabinClass    string                `json:"cabinClass"`
+	SortBy        string                `json:"sortBy,omitempty"`
+	Filters       *domain.FilterOptions `json:"filters,omitempty"`
 }
 
 func (r SearchFlightsRequest) toDomain() (domain.SearchCriteria, usecase.SearchOptions) {
@@ -28,6 +29,9 @@ func (r SearchFlightsRequest) toDomain() (domain.SearchCriteria, usecase.SearchO
 	}
 	opts := usecase.SearchOptions{
 		SortBy: domain.SortBy(r.SortBy),
+	}
+	if r.Filters != nil {
+		opts.Filters = *r.Filters
 	}
 	return criteria, opts
 }

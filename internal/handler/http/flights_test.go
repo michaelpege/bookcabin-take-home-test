@@ -118,3 +118,49 @@ func TestSearchFlightsEndpointAllProvidersFailReturns503(t *testing.T) {
 		t.Fatalf("unexpected 503 payload: %+v", resp)
 	}
 }
+
+func TestSearchFlightsEndpointFiltersAndBestValueSort(t *testing.T) {
+	log := newTestLogger()
+	agg := usecase.NewFlightAggregator(
+		[]domain.FlightProvider{garuda.NewClient(garuda.WithDelay(0, 0))},
+		log,
+	)
+	router := NewRouter(log, agg)
+
+	body := `{
+		"origin": "CGK",
+		"destination": "DPS",
+		"departureDate": "2025-12-15",
+		"passengers": 1,
+		"cabinClass": "economy",
+		"sortBy": "best_value",
+		"filters": {
+			"max_stops": 0,
+			"max_price": 1500000
+		}
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/flights/search", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res domain.SearchResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode SearchResult: %v", err)
+	}
+	if res.Metadata.TotalResults != 2 || len(res.Flights) != 2 {
+		t.Fatalf("expected 2 filtered non-stop Garuda flights, got %d", len(res.Flights))
+	}
+	for _, f := range res.Flights {
+		if f.Stops != 0 {
+			t.Fatalf("expected non-stop flight only, got stops=%d", f.Stops)
+		}
+		if f.BestValueScore == nil {
+			t.Fatalf("expected BestValueScore populated on %s", f.FlightNumber)
+		}
+	}
+}
