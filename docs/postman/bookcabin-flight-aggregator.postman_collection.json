@@ -1,0 +1,283 @@
+{
+  "info": {
+    "_postman_id": "d8d4a6d8-7e4b-4b64-9a91-620b3f9d3a10",
+    "name": "BookCabin Flight Search & Aggregation API",
+    "description": "Ready-to-import Postman collection covering health probes, multi-provider aggregation, filtering, price comparison, best-value ranking, sorting, Redis L1 cache hits, empty-array safety, and validation errors.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Liveness",
+      "item": [
+        {
+          "name": "Ping (Liveness)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Response returns pong', function () { pm.expect(pm.response.json().status).to.eql('pong'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ping",
+              "host": ["{{baseUrl}}"],
+              "path": ["ping"]
+            }
+          }
+        },
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('Service status is ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Flight Search & Aggregation",
+      "item": [
+        {
+          "name": "1. Basic Search (PDF Contract, Default price_asc)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('4 providers queried', function () { pm.expect(body.metadata.providers_queried).to.eql(4); });",
+                  "pm.test('Flights sorted price_asc', function () {",
+                  "  for (let i = 1; i < body.flights.length; i++) {",
+                  "    pm.expect(body.flights[i].price.amount).to.be.at.least(body.flights[i - 1].price.amount);",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": \"CGK\",\n  \"destination\": \"DPS\",\n  \"departureDate\": \"2025-12-15\",\n  \"returnDate\": null,\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/flights/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "flights", "search"]
+            }
+          }
+        },
+        {
+          "name": "2. Sort by Best Value",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Scores sorted descending', function () {",
+                  "  for (let i = 1; i < body.flights.length; i++) {",
+                  "    pm.expect(body.flights[i - 1].best_value_score).to.be.at.least(body.flights[i].best_value_score);",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": \"CGK\",\n  \"destination\": \"DPS\",\n  \"departureDate\": \"2025-12-15\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\",\n  \"sortBy\": \"best_value\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/flights/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "flights", "search"]
+            }
+          }
+        },
+        {
+          "name": "3. Sort by Shortest Duration",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('Durations sorted ascending', function () {",
+                  "  for (let i = 1; i < body.flights.length; i++) {",
+                  "    pm.expect(body.flights[i].duration.total_minutes).to.be.at.least(body.flights[i - 1].duration.total_minutes);",
+                  "  }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": \"CGK\",\n  \"destination\": \"DPS\",\n  \"departureDate\": \"2025-12-15\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\",\n  \"sortBy\": \"duration_asc\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/flights/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "flights", "search"]
+            }
+          }
+        },
+        {
+          "name": "4. Filtered Direct Morning Flights (Multi-Predicate + Cache Hit)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('All flights match max_stops=0, max_price, duration & airline predicates', function () {",
+                  "  body.flights.forEach(function (f) {",
+                  "    pm.expect(f.stops).to.eql(0);",
+                  "    pm.expect(f.price.amount).to.be.at.most(1500000);",
+                  "    pm.expect(f.duration.total_minutes).to.be.at.most(150);",
+                  "    pm.expect(['GA', 'QZ']).to.include(f.airline.code);",
+                  "  });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": \"CGK\",\n  \"destination\": \"DPS\",\n  \"departureDate\": \"2025-12-15\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\",\n  \"sortBy\": \"departure_asc\",\n  \"filters\": {\n    \"max_stops\": 0,\n    \"max_price\": 1500000,\n    \"airlines\": [\"Garuda Indonesia\", \"QZ\"],\n    \"departure_window\": { \"start\": \"06:00\", \"end\": \"12:00\" },\n    \"max_duration_minutes\": 150\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/flights/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "flights", "search"]
+            }
+          }
+        },
+        {
+          "name": "5. Empty Match Returns Non-Nil Array []",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test('flights is an empty array, never null', function () {",
+                  "  pm.expect(body.flights).to.be.an('array').that.is.empty;",
+                  "  pm.expect(body.metadata.total_results).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": \"CGK\",\n  \"destination\": \"DPS\",\n  \"departureDate\": \"2025-12-15\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\",\n  \"filters\": {\n    \"min_price\": 99999999\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/flights/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "flights", "search"]
+            }
+          }
+        },
+        {
+          "name": "6. Invalid Criteria (400 Bad Request)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('Error message returned', function () { pm.expect(pm.response.json().error).to.be.a('string'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"origin\": \"CGK\",\n  \"destination\": \"CGK\",\n  \"departureDate\": \"2025-12-15\",\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/flights/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "flights", "search"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

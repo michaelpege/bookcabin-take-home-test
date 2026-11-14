@@ -13,8 +13,8 @@ Track commit-by-commit progress so any fresh agent session can resume immediatel
 | **C6** | Batik Air provider adapter + fixture tests + shared `provider` helpers + `main.go` wiring | **Done** (PR #14) | `go test -race ./internal/provider/batik/...` |
 | **C7** | AirAsia provider adapter (90% SLA simulation) + fixture tests + `main.go` wiring | **Done** (PR #16) | `go test -race ./internal/provider/airasia/...` |
 | **C8** | `internal/usecase` (filter, sorter, comparator, ranker + `fetchProviderOutcomes` refactor) + `-race` tests | **Done** (PR #18) | `go test -race ./internal/usecase/...` |
-| **C9** | `internal/repository/redis` (2-tier write-through cache) + `POST /api/v1/flights/search` | **PR Open** (Issue #19) | `make check && make test-integration` |
-| **C10** | Final `README.md` (curl examples, complexity analysis, design choices) + benchmarks | Pending | `go test -bench=. ./...` |
+| **C9** | `internal/repository/redis` (2-tier write-through cache) + `POST /api/v1/flights/search` | **Done** (PR #20) | `make check && make test-integration` |
+| **C10** | Final `README.md` (curl examples, complexity analysis, design choices) + benchmarks | **PR Open** (Issue #21) | `go test -bench=. ./...` |
 
 ## Planned Notes & Follow-Ups
 - **C8 (`internal/usecase/flight_aggregator.go`)**: Extracted `fetchProviderOutcomes(ctx, criteria) []providerOutcome` out of `FlightAggregator.SearchFlights` when wiring `flight_filter.go`, `price_comparison.go`, `best_value_ranker.go`, and `flight_sorter.go` so concurrency scatter-gather stays cleanly isolated from high-level search orchestration.
