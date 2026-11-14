@@ -128,7 +128,7 @@ func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.Se
 		providerErrors = nil
 	}
 
-	return domain.SearchResult{
+	res := domain.SearchResult{
 		SearchCriteria: criteria,
 		Metadata: domain.SearchMetadata{
 			TotalResults:       len(aggregated),
@@ -140,5 +140,11 @@ func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.Se
 			ProviderErrors:     providerErrors,
 		},
 		Flights: aggregated,
-	}, nil
+	}
+
+	if len(a.providers) > 0 && succeeded == 0 {
+		return res, domain.ErrAllProvidersFailed
+	}
+
+	return res, nil
 }

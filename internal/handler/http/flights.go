@@ -30,11 +30,17 @@ func handleSearchFlights(svc SearchService) http.HandlerFunc {
 		criteria, opts := req.toDomain()
 		result, err := svc.SearchFlights(r.Context(), criteria, opts)
 		if err != nil {
-			if errors.Is(err, domain.ErrSearchInvalidCriteria) {
+			switch {
+			case errors.Is(err, domain.ErrSearchInvalidCriteria):
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-				return
+			case errors.Is(err, domain.ErrAllProvidersFailed):
+				writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+					"error":    err.Error(),
+					"metadata": result.Metadata,
+				})
+			default:
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "flight search failed"})
 			}
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "flight search failed"})
 			return
 		}
 

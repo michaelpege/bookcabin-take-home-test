@@ -11,12 +11,14 @@ import (
 // NewRouter constructs the HTTP handler with health/ping endpoints, flight search,
 // and recovery + request-logging middleware.
 func NewRouter(log *slog.Logger, flightSearch SearchService) http.Handler {
+	if flightSearch == nil {
+		panic("http.NewRouter: flightSearch service must not be nil")
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /ping", handlePing)
 	mux.HandleFunc("GET /health", handleHealth)
-	if flightSearch != nil {
-		mux.HandleFunc("POST /api/v1/flights/search", handleSearchFlights(flightSearch))
-	}
+	mux.HandleFunc("POST /api/v1/flights/search", handleSearchFlights(flightSearch))
 
 	return recoverMiddleware(log, logger.Middleware(log, mux))
 }

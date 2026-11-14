@@ -14,6 +14,8 @@ var (
 var (
 	// ErrProviderUnavailable indicates an upstream airline provider failed or timed out.
 	ErrProviderUnavailable = errors.New("provider unavailable")
+	// ErrAllProvidersFailed indicates every queried airline provider failed for the search.
+	ErrAllProvidersFailed = errors.New("all flight providers failed")
 	// ErrCacheMiss indicates the requested key is not present in the cache.
 	ErrCacheMiss = errors.New("cache miss")
 )

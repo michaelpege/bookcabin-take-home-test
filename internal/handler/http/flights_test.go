@@ -78,3 +78,43 @@ func TestSearchFlightsEndpointValidation(t *testing.T) {
 		})
 	}
 }
+
+type failingSearchService struct{}
+
+func (failingSearchService) SearchFlights(context.Context, domain.SearchCriteria, usecase.SearchOptions) (domain.SearchResult, error) {
+	return domain.SearchResult{
+		Metadata: domain.SearchMetadata{
+			ProvidersQueried:   2,
+			ProvidersSucceeded: 0,
+			ProvidersFailed:    2,
+			ProviderErrors: map[string]string{
+				"Garuda Indonesia": domain.ErrProviderUnavailable.Error(),
+				"AirAsia":          domain.ErrProviderUnavailable.Error(),
+			},
+		},
+	}, domain.ErrAllProvidersFailed
+}
+
+func TestSearchFlightsEndpointAllProvidersFailReturns503(t *testing.T) {
+	router := NewRouter(newTestLogger(), failingSearchService{})
+	body := `{"origin":"CGK","destination":"DPS","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/flights/search", bytes.NewBufferString(body))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 Service Unavailable, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp struct {
+		Error    string                `json:"error"`
+		Metadata domain.SearchMetadata `json:"metadata"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode 503 payload: %v", err)
+	}
+	if resp.Error == "" || resp.Metadata.ProvidersFailed != 2 || resp.Metadata.ProvidersSucceeded != 0 {
+		t.Fatalf("unexpected 503 payload: %+v", resp)
+	}
+}

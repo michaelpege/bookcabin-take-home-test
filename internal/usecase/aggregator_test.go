@@ -108,3 +108,23 @@ func TestFlightAggregatorRejectsInvalidCriteria(t *testing.T) {
 		t.Fatalf("expected ErrSearchInvalidCriteria, got %v", err)
 	}
 }
+
+func TestFlightAggregatorReturnsErrorWhenAllProvidersFail(t *testing.T) {
+	discardLog := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	providers := []domain.FlightProvider{
+		fakeProvider{name: "Garuda Indonesia", err: domain.ErrProviderUnavailable},
+		fakeProvider{name: "Lion Air", err: domain.ErrProviderUnavailable},
+	}
+
+	agg := NewFlightAggregator(providers, discardLog)
+	res, err := agg.SearchFlights(context.Background(), validCriteria(), SearchOptions{})
+	if !errors.Is(err, domain.ErrAllProvidersFailed) {
+		t.Fatalf("expected ErrAllProvidersFailed, got %v", err)
+	}
+	if res.Metadata.ProvidersQueried != 2 || res.Metadata.ProvidersSucceeded != 0 || res.Metadata.ProvidersFailed != 2 {
+		t.Fatalf("unexpected provider metadata: %+v", res.Metadata)
+	}
+	if len(res.Metadata.ProviderErrors) != 2 {
+		t.Fatalf("expected 2 provider errors recorded, got %+v", res.Metadata.ProviderErrors)
+	}
+}
