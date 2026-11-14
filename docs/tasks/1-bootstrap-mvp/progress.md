@@ -4,8 +4,8 @@ Track commit-by-commit progress so any fresh agent session can resume immediatel
 
 | Commit | Milestone | Status | Verification |
 | :--- | :--- | :--- | :--- |
-| **C1** | Bootstrap Go Clean Architecture server (`/health`, `/ping`, `slog`, Docker, CI, Docs) | **In Progress** | `make check` |
-| **C2** | `internal/domain` + `timeutil` (WIB/WITA/WIT) + `currency` (IDR) + unit tests | Pending | `go test -race ./internal/domain/... ./internal/platform/...` |
+| **C1** | Bootstrap Go Clean Architecture server (`/health`, `/ping`, `slog`, Docker, CI, Docs) | **Done** (PR #2) | `make check` |
+| **C2** | `internal/domain` + `timeutil` (WIB/WITA/WIT) + `currency` (IDR) + unit tests | **PR Open** (Issue #3) | `go test -race ./internal/domain/... ./internal/platform/...` |
 | **C3** | `ResilientProvider` decorator (per-SLA timeout, rate limit, retry) + mock auth | Pending | `go test -race ./internal/provider/...` |
 | **C4** | Garuda Indonesia provider adapter + fixture tests | Pending | `go test -race ./internal/provider/garuda/...` |
 | **C5** | Lion Air provider adapter + fixture tests | Pending | `go test -race ./internal/provider/lion/...` |
