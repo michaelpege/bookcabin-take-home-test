@@ -27,10 +27,10 @@ func main() {
 	cfg := config.Load()
 	log := logger.New(cfg.LogLevel)
 
-	redisCache := rediscache.NewFlightCache(cfg.RedisAddr)
-	defer func() { _ = redisCache.Close() }()
+	redisClient, err := rediscache.NewClient(cfg.RedisAddr)
+	defer func() { _ = redisClient.Close() }()
 
-	if err := redisCache.Ping(context.Background()); err != nil {
+	if err != nil {
 		log.Warn("redis_unavailable_fail_open", slog.String("addr", cfg.RedisAddr), slog.String("error", err.Error()))
 	} else {
 		log.Info("redis_connected", slog.String("addr", cfg.RedisAddr))
@@ -50,7 +50,7 @@ func main() {
 	flightAggregator := usecase.NewFlightAggregator(
 		providers,
 		log,
-		usecase.WithCache(redisCache),
+		usecase.WithCache(redisClient),
 		usecase.WithCacheTTLs(cfg.CacheBaseTTL, cfg.CacheProviderTTL),
 	)
 

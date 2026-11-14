@@ -19,21 +19,20 @@ func redisIntegrationAddr() string {
 	return "localhost:6379"
 }
 
-func TestFlightCacheIntegrationRoundTrip(t *testing.T) {
-	cache := NewFlightCache(redisIntegrationAddr(), WithOperationTimeout(2*time.Second))
+func TestClientIntegrationRoundTrip(t *testing.T) {
+	cache, err := NewClient(redisIntegrationAddr(), WithOperationTimeout(2*time.Second))
+	if err != nil {
+		t.Fatalf("connect Redis at %s: %v", redisIntegrationAddr(), err)
+	}
 	defer func() { _ = cache.Close() }()
 
 	ctx := context.Background()
-	if err := cache.Ping(ctx); err != nil {
-		t.Fatalf("ping Redis at %s: %v", redisIntegrationAddr(), err)
-	}
-
-	missKey := "test:flight_cache:missing:" + time.Now().Format("150405.000000000")
+	missKey := "test:redis_client:missing:" + time.Now().Format("150405.000000000")
 	if _, err := cache.Get(ctx, missKey); !errors.Is(err, domain.ErrCacheMiss) {
 		t.Fatalf("expected ErrCacheMiss for %q, got %v", missKey, err)
 	}
 
-	key := "test:flight_cache:roundtrip:" + time.Now().Format("150405.000000000")
+	key := "test:redis_client:roundtrip:" + time.Now().Format("150405.000000000")
 	want := []byte(`{"flights":[{"id":"GA400_Garuda"}]}`)
 	if err := cache.Set(ctx, key, want, 30*time.Second); err != nil {
 		t.Fatalf("Set failed: %v", err)

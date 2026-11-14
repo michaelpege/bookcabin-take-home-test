@@ -13,40 +13,43 @@ import (
 
 const defaultOperationTimeout = 200 * time.Millisecond
 
-// Option configures a FlightCache instance.
-type Option func(*FlightCache)
+// Option configures a Redis cache Client instance.
+type Option func(*Client)
 
 // WithOperationTimeout overrides the per-command Redis timeout used to fail open
 // promptly when Redis is slow or unreachable.
 func WithOperationTimeout(d time.Duration) Option {
-	return func(c *FlightCache) {
+	return func(c *Client) {
 		if d > 0 {
 			c.opTimeout = d
 		}
 	}
 }
 
-// FlightCache implements domain.FlightCache backed by Redis.
-type FlightCache struct {
+// Client implements domain.FlightCache backed by Redis.
+type Client struct {
 	client    *goredis.Client
 	opTimeout time.Duration
 }
 
-// NewFlightCache connects to Redis at addr with tight fail-open timeouts.
-func NewFlightCache(addr string, opts ...Option) *FlightCache {
-	client := goredis.NewClient(&goredis.Options{
+// NewClient connects to Redis at addr with tight fail-open timeouts and verifies
+// initial connectivity via Ping. It always returns a usable fail-open Client even
+// when Ping returns an error.
+func NewClient(addr string, opts ...Option) (*Client, error) {
+	rdb := goredis.NewClient(&goredis.Options{
 		Addr:         addr,
 		DialTimeout:  500 * time.Millisecond,
 		ReadTimeout:  defaultOperationTimeout,
 		WriteTimeout: defaultOperationTimeout,
 	})
-	return NewFlightCacheFromClient(client, opts...)
+	c := NewClientFromGoRedis(rdb, opts...)
+	return c, c.Ping(context.Background())
 }
 
-// NewFlightCacheFromClient wraps an existing go-redis Client.
-func NewFlightCacheFromClient(client *goredis.Client, opts ...Option) *FlightCache {
-	c := &FlightCache{
-		client:    client,
+// NewClientFromGoRedis wraps an existing go-redis Client.
+func NewClientFromGoRedis(rdb *goredis.Client, opts ...Option) *Client {
+	c := &Client{
+		client:    rdb,
 		opTimeout: defaultOperationTimeout,
 	}
 	for _, opt := range opts {
@@ -56,7 +59,7 @@ func NewFlightCacheFromClient(client *goredis.Client, opts ...Option) *FlightCac
 }
 
 // Get fetches cached bytes for key, returning domain.ErrCacheMiss when absent.
-func (c *FlightCache) Get(ctx context.Context, key string) ([]byte, error) {
+func (c *Client) Get(ctx context.Context, key string) ([]byte, error) {
 	opCtx, cancel := c.withOpTimeout(ctx)
 	defer cancel()
 
@@ -71,7 +74,7 @@ func (c *FlightCache) Get(ctx context.Context, key string) ([]byte, error) {
 }
 
 // Set stores value under key for ttl duration. Non-positive TTLs are ignored.
-func (c *FlightCache) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
+func (c *Client) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	if ttl <= 0 {
 		return nil
 	}
@@ -85,7 +88,7 @@ func (c *FlightCache) Set(ctx context.Context, key string, value []byte, ttl tim
 }
 
 // Ping verifies Redis connectivity within the operation timeout.
-func (c *FlightCache) Ping(ctx context.Context) error {
+func (c *Client) Ping(ctx context.Context) error {
 	opCtx, cancel := c.withOpTimeout(ctx)
 	defer cancel()
 
@@ -96,14 +99,14 @@ func (c *FlightCache) Ping(ctx context.Context) error {
 }
 
 // Close releases underlying Redis client connections.
-func (c *FlightCache) Close() error {
+func (c *Client) Close() error {
 	if c.client == nil {
 		return nil
 	}
 	return c.client.Close()
 }
 
-func (c *FlightCache) withOpTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+func (c *Client) withOpTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	if c.opTimeout <= 0 {
 		return ctx, func() {}
 	}

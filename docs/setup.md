@@ -18,6 +18,8 @@ Copy `.env.example` to `.env` if overriding defaults:
 | `WRITE_TIMEOUT` | `10s` | HTTP server write timeout |
 | `SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown deadline |
 | `REDIS_ADDR` | `localhost:6379` | Redis address (fail-open if unreachable) |
+| `CACHE_BASE_TTL` | `2m` | L1 aggregated base search cache TTL |
+| `CACHE_PROVIDER_TTL` | `5m` | Tier-2 per-provider search cache TTL |
 
 ## Running Locally
 

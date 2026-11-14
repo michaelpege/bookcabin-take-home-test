@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestFlightCacheUnreachableFailsPromptly(t *testing.T) {
+func TestClientUnreachableFailsPromptly(t *testing.T) {
 	// Pick a closed loopback port by binding and immediately closing a listener.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -16,11 +16,11 @@ func TestFlightCacheUnreachableFailsPromptly(t *testing.T) {
 	closedAddr := ln.Addr().String()
 	_ = ln.Close()
 
-	cache := NewFlightCache(closedAddr, WithOperationTimeout(50*time.Millisecond))
+	cache, pingErr := NewClient(closedAddr, WithOperationTimeout(50*time.Millisecond))
 	defer func() { _ = cache.Close() }()
 
-	if err := cache.Ping(context.Background()); err == nil {
-		t.Fatalf("expected Ping error on unreachable Redis address %s", closedAddr)
+	if pingErr == nil {
+		t.Fatalf("expected NewClient ping error on unreachable Redis address %s", closedAddr)
 	}
 	if _, err := cache.Get(context.Background(), "flight_search:CGK:DPS:2025-12-15:1:economy"); err == nil {
 		t.Fatalf("expected Get error on unreachable Redis address %s", closedAddr)
