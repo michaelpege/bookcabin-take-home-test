@@ -1,0 +1,22 @@
+# Sensitive / prompt source folder (never commit)
+BookCabin Take Home Test - Software Engineer (Backend)/
+
+# Binaries & build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.out
+
+# Environment & local overrides
+.env
+.env.local
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
