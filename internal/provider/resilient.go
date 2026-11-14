@@ -75,9 +75,9 @@ func (r *ResilientProvider) SearchFlights(ctx context.Context, criteria domain.S
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, r.wrapUnavailable("cancelled", ctxErr)
 		}
-		// Fail fast on permanent contract, decode, or auth errors without burning retries.
-		if isPermanentProviderError(err) {
-			return nil, r.wrapUnavailable("permanent error", err)
+		// Fail fast on non-retryable errors without burning retries.
+		if r.IsNonRetryableError(err) {
+			return nil, r.wrapUnavailable("non-retryable error", err)
 		}
 		if attempt == attempts-1 {
 			break
@@ -103,9 +103,29 @@ func (r *ResilientProvider) wrapUnavailable(reason string, err error) error {
 	return fmt.Errorf("%w: %s %s: %w", domain.ErrProviderUnavailable, r.next.Name(), reason, err)
 }
 
-func isPermanentProviderError(err error) bool {
-	if errors.Is(err, domain.ErrProviderPermanent) {
-		return true
+var nonRetryableErrorCodes = []error{
+	domain.ErrSearchInvalidCriteria,
+	domain.ErrProviderUnauthorized,
+	domain.ErrProviderInvalidResponse,
+	domain.ErrProviderContract,
+}
+
+// IsNonRetryableError classifies permanent provider error codes and JSON decode
+// errors that should abort retries immediately rather than consuming retry budget.
+func (r *ResilientProvider) IsNonRetryableError(err error) bool {
+	return IsNonRetryableError(err)
+}
+
+// IsNonRetryableError reports whether err matches any known non-retryable provider
+// error code or JSON payload syntax/type error.
+func IsNonRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+	for _, code := range nonRetryableErrorCodes {
+		if errors.Is(err, code) {
+			return true
+		}
 	}
 	var syntaxErr *json.SyntaxError
 	var typeErr *json.UnmarshalTypeError

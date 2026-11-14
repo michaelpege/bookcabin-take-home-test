@@ -18,7 +18,7 @@ func (c *Client) SearchFlights(ctx context.Context, criteria domain.SearchCriter
 	headers := make(http.Header)
 	if c.auth != nil {
 		if err := c.auth.Apply(ctx, headers); err != nil {
-			return nil, fmt.Errorf("%w: garuda auth: %w", domain.ErrProviderPermanent, err)
+			return nil, fmt.Errorf("%w: garuda auth: %w", domain.ErrProviderUnauthorized, err)
 		}
 	}
 
@@ -60,7 +60,7 @@ func buildWireParams(criteria domain.SearchCriteria) wireSearchRequest {
 // server-side query matching using wireReq.
 func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req wireSearchRequest) ([]rawFlight, error) {
 	if c.auth != nil && headers.Get("Authorization") == "" {
-		return nil, fmt.Errorf("%w: garuda unauthorized: missing authorization header", domain.ErrProviderPermanent)
+		return nil, fmt.Errorf("%w: garuda unauthorized: missing authorization header", domain.ErrProviderUnauthorized)
 	}
 
 	if err := provider.SimulateDelay(ctx, c.minDelay, c.maxDelay); err != nil {
@@ -69,10 +69,10 @@ func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req 
 
 	var resp apiResponse
 	if err := json.Unmarshal(c.payload, &resp); err != nil {
-		return nil, fmt.Errorf("%w: garuda decode response: %w", domain.ErrProviderPermanent, err)
+		return nil, fmt.Errorf("%w: garuda decode response: %w", domain.ErrProviderInvalidResponse, err)
 	}
 	if !strings.EqualFold(resp.Status, "success") {
-		return nil, fmt.Errorf("%w: garuda contract error: unexpected status %q", domain.ErrProviderPermanent, resp.Status)
+		return nil, fmt.Errorf("%w: garuda contract error: unexpected status %q", domain.ErrProviderContract, resp.Status)
 	}
 
 	matched := make([]rawFlight, 0, len(resp.Flights))

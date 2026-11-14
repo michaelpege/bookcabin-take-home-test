@@ -85,9 +85,10 @@ func TestGarudaContractErrorHandling(t *testing.T) {
 	tests := []struct {
 		name    string
 		payload string
+		wantErr error
 	}{
-		{name: "bad json", payload: `{invalid`},
-		{name: "non-success status", payload: `{"status":"error","flights":[]}`},
+		{name: "bad json", payload: `{invalid`, wantErr: domain.ErrProviderInvalidResponse},
+		{name: "non-success status", payload: `{"status":"error","flights":[]}`, wantErr: domain.ErrProviderContract},
 	}
 
 	for _, tc := range tests {
@@ -96,8 +97,8 @@ func TestGarudaContractErrorHandling(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
 			_, err := client.SearchFlights(ctx, defaultCriteria())
-			if !errors.Is(err, domain.ErrProviderPermanent) {
-				t.Fatalf("expected ErrProviderPermanent, got %v", err)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("expected %v, got %v", tc.wantErr, err)
 			}
 		})
 	}

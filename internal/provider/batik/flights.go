@@ -18,7 +18,7 @@ func (c *Client) SearchFlights(ctx context.Context, criteria domain.SearchCriter
 	headers := make(http.Header)
 	if c.auth != nil {
 		if err := c.auth.Apply(ctx, headers); err != nil {
-			return nil, fmt.Errorf("%w: batik auth: %w", domain.ErrProviderPermanent, err)
+			return nil, fmt.Errorf("%w: batik auth: %w", domain.ErrProviderUnauthorized, err)
 		}
 	}
 
@@ -55,7 +55,7 @@ func buildWireParams(criteria domain.SearchCriteria) wireSearchRequest {
 
 func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req wireSearchRequest) ([]rawFlight, error) {
 	if c.auth != nil && len(headers) == 0 {
-		return nil, fmt.Errorf("%w: batik unauthorized: missing auth header", domain.ErrProviderPermanent)
+		return nil, fmt.Errorf("%w: batik unauthorized: missing auth header", domain.ErrProviderUnauthorized)
 	}
 
 	if err := provider.SimulateDelay(ctx, c.minDelay, c.maxDelay); err != nil {
@@ -64,10 +64,10 @@ func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req 
 
 	var resp apiResponse
 	if err := json.Unmarshal(c.payload, &resp); err != nil {
-		return nil, fmt.Errorf("%w: batik decode response: %w", domain.ErrProviderPermanent, err)
+		return nil, fmt.Errorf("%w: batik decode response: %w", domain.ErrProviderInvalidResponse, err)
 	}
 	if resp.Code != http.StatusOK {
-		return nil, fmt.Errorf("%w: batik contract error: unexpected code %d (%s)", domain.ErrProviderPermanent, resp.Code, resp.Message)
+		return nil, fmt.Errorf("%w: batik contract error: unexpected code %d (%s)", domain.ErrProviderContract, resp.Code, resp.Message)
 	}
 
 	matched := make([]rawFlight, 0, len(resp.Results))

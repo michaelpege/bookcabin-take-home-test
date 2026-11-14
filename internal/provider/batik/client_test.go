@@ -2,6 +2,7 @@ package batik
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -98,9 +99,10 @@ func TestBatikContractErrorHandling(t *testing.T) {
 	tests := []struct {
 		name    string
 		payload string
+		wantErr error
 	}{
-		{name: "bad json", payload: `{invalid`},
-		{name: "non-200 status", payload: `{"code":500,"message":"upstream error","results":[]}`},
+		{name: "bad json", payload: `{invalid`, wantErr: domain.ErrProviderInvalidResponse},
+		{name: "non-200 status", payload: `{"code":500,"message":"upstream error","results":[]}`, wantErr: domain.ErrProviderContract},
 	}
 
 	for _, tc := range tests {
@@ -108,8 +110,9 @@ func TestBatikContractErrorHandling(t *testing.T) {
 			client := NewClient(WithDelay(0, 0), WithPayload([]byte(tc.payload)))
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			if _, err := client.SearchFlights(ctx, defaultCriteria()); err == nil {
-				t.Fatal("expected error, got nil")
+			_, err := client.SearchFlights(ctx, defaultCriteria())
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("expected %v, got %v", tc.wantErr, err)
 			}
 		})
 	}

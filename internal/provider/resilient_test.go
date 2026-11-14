@@ -254,14 +254,55 @@ func TestResilientProviderWrapsUnavailableOnCancellation(t *testing.T) {
 	}
 }
 
-func TestResilientProviderFailsFastOnPermanentErrors(t *testing.T) {
-	tests := []struct {
+func TestIsNonRetryableErrorClassification(t *testing.T) {
+	cases := []struct {
 		name string
 		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "transient unavailable", err: domain.ErrProviderUnavailable, want: false},
+		{name: "generic upstream error", err: errors.New("simulated 503"), want: false},
+		{name: "unauthorized", err: fmt.Errorf("%w: bad token", domain.ErrProviderUnauthorized), want: true},
+		{name: "invalid response", err: fmt.Errorf("%w: corrupt json", domain.ErrProviderInvalidResponse), want: true},
+		{name: "contract error", err: fmt.Errorf("%w: code 500", domain.ErrProviderContract), want: true},
+		{name: "invalid criteria", err: domain.ErrSearchInvalidCriteria, want: true},
+		{name: "json syntax error", err: json.Unmarshal([]byte("{bad"), new(map[string]any)), want: true},
+	}
+
+	p := NewResilientProvider(&stubProvider{name: "Test"}, ResiliencePolicy{})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsNonRetryableError(tc.err); got != tc.want {
+				t.Fatalf("IsNonRetryableError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+			if got := p.IsNonRetryableError(tc.err); got != tc.want {
+				t.Fatalf("ResilientProvider.IsNonRetryableError(%v) = %v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResilientProviderFailsFastOnNonRetryableErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode error
 	}{
 		{
-			name: "domain permanent sentinel",
-			err:  fmt.Errorf("%w: bad credentials", domain.ErrProviderPermanent),
+			name:     "unauthorized sentinel",
+			err:      fmt.Errorf("%w: bad credentials", domain.ErrProviderUnauthorized),
+			wantCode: domain.ErrProviderUnauthorized,
+		},
+		{
+			name:     "contract sentinel",
+			err:      fmt.Errorf("%w: status error", domain.ErrProviderContract),
+			wantCode: domain.ErrProviderContract,
+		},
+		{
+			name:     "invalid response sentinel",
+			err:      fmt.Errorf("%w: invalid payload", domain.ErrProviderInvalidResponse),
+			wantCode: domain.ErrProviderInvalidResponse,
 		},
 		{
 			name: "json syntax decode error",
@@ -286,6 +327,9 @@ func TestResilientProviderFailsFastOnPermanentErrors(t *testing.T) {
 			_, err := p.SearchFlights(context.Background(), sampleCriteria())
 			if !errors.Is(err, domain.ErrProviderUnavailable) {
 				t.Fatalf("expected ErrProviderUnavailable wrapper, got %v", err)
+			}
+			if tc.wantCode != nil && !errors.Is(err, tc.wantCode) {
+				t.Fatalf("expected wrapped code %v, got %v", tc.wantCode, err)
 			}
 			if got := stub.calls.Load(); got != 1 {
 				t.Fatalf("expected fail-fast with 1 attempt (no retries), got %d", got)
