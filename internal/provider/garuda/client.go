@@ -9,7 +9,7 @@ import (
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
 )
 
-const ProviderName = "Garuda Indonesia"
+const defaultProviderName = "Garuda Indonesia"
 
 //go:embed testdata/search_response.json
 var defaultPayload []byte
@@ -41,6 +41,7 @@ func WithAuth(auth provider.Authenticator) Option {
 
 // Client is the Garuda Indonesia FlightProvider adapter.
 type Client struct {
+	name     string
 	auth     provider.Authenticator
 	payload  []byte
 	minDelay time.Duration
@@ -51,6 +52,7 @@ type Client struct {
 // and mock Bearer JWT authentication.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
+		name:     defaultProviderName,
 		auth:     provider.BearerTokenAuth{Token: "mock-garuda-jwt-token"},
 		payload:  defaultPayload,
 		minDelay: 50 * time.Millisecond,
@@ -64,7 +66,7 @@ func NewClient(opts ...Option) *Client {
 
 // Name returns the canonical provider name.
 func (c *Client) Name() string {
-	return ProviderName
+	return c.name
 }
 
 func (c *Client) simulateDelay(ctx context.Context) error {
