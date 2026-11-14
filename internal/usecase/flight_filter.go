@@ -84,11 +84,7 @@ func matchesFilter(
 	}
 
 	outsideArrivalWindow := hasArrWindow && !matchesTimeWindow(f.Arrival.Datetime, arrWindow)
-	if outsideArrivalWindow {
-		return false
-	}
-
-	return true
+	return !outsideArrivalWindow
 }
 
 func matchesAirline(f domain.Flight, allowed map[string]struct{}) bool {
