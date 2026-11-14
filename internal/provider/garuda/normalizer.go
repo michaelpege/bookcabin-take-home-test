@@ -20,7 +20,7 @@ var airportCities = map[string]string{
 	"YIA": "Yogyakarta",
 }
 
-func normalizeFlight(rf rawFlight) (domain.Flight, error) {
+func (rf rawFlight) toDomain(providerName string) (domain.Flight, error) {
 	depRaw, arrRaw, stops := resolveRouteEndpoints(rf)
 
 	depTime, err := timeutil.ParseTimestamp(depRaw.Time, "")
@@ -55,8 +55,8 @@ func normalizeFlight(rf rawFlight) (domain.Flight, error) {
 	}
 
 	return domain.Flight{
-		ID:       fmt.Sprintf("%s_%s", rf.FlightID, ProviderName),
-		Provider: ProviderName,
+		ID:       fmt.Sprintf("%s_%s", rf.FlightID, providerName),
+		Provider: providerName,
 		Airline: domain.Airline{
 			Name: rf.Airline,
 			Code: rf.AirlineCode,
