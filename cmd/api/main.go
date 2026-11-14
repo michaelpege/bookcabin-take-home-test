@@ -16,6 +16,7 @@ import (
 	"github.com/michaelpege/bookcabin-take-home-test/internal/platform/logger"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider/garuda"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/provider/lion"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/usecase"
 )
 
@@ -26,6 +27,7 @@ func main() {
 	policies := provider.DefaultPolicies()
 	providers := []domain.FlightProvider{
 		provider.NewResilientProvider(garuda.NewClient(), policies[garuda.ProviderName]),
+		provider.NewResilientProvider(lion.NewClient(), policies[lion.ProviderName]),
 	}
 	flightAggregator := usecase.NewFlightAggregator(providers, log)
 
