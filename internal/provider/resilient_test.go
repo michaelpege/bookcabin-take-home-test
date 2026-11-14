@@ -2,8 +2,11 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -161,5 +164,132 @@ func TestAuthenticators(t *testing.T) {
 	}
 	if got := h3.Get("Authorization"); got != "Basic YmF0aWs6cHc=" {
 		t.Fatalf("unexpected basic auth header: %q", got)
+	}
+}
+
+func TestResilientProviderConsumesRateLimitPerRetryAttempt(t *testing.T) {
+	stub := &stubProvider{
+		name: "AirAsia",
+		handler: func(_ context.Context, attempt int32) ([]domain.Flight, error) {
+			if attempt < 3 {
+				return nil, errors.New("transient 503")
+			}
+			return []domain.Flight{{ID: "QZ520_AirAsia"}}, nil
+		},
+	}
+
+	// RateBurst=1 allows attempt 1 immediately; retries 2 and 3 each require a 50ms token refill.
+	p := NewResilientProvider(stub, ResiliencePolicy{
+		Timeout:      100 * time.Millisecond,
+		MaxRetries:   2,
+		BaseBackoff:  1 * time.Millisecond,
+		RateLimitRPS: 20, // 50ms per token
+		RateBurst:    1,
+	})
+
+	start := time.Now()
+	flights, err := p.SearchFlights(context.Background(), sampleCriteria())
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("expected eventual retry success, got %v", err)
+	}
+	if len(flights) != 1 || stub.calls.Load() != 3 {
+		t.Fatalf("expected 3 attempts, got calls=%d flights=%d", stub.calls.Load(), len(flights))
+	}
+	if elapsed < 80*time.Millisecond {
+		t.Fatalf("expected per-attempt rate limiting across retries (>=80ms for 2 refills), finished in %v", elapsed)
+	}
+
+	// Drain burst and verify retry blocked by rate limit wraps both ErrProviderUnavailable & context deadline.
+	stubFail := &stubProvider{
+		name: "AirAsia",
+		handler: func(_ context.Context, _ int32) ([]domain.Flight, error) {
+			return nil, errors.New("transient failure")
+		},
+	}
+	pStrict := NewResilientProvider(stubFail, ResiliencePolicy{
+		Timeout:      50 * time.Millisecond,
+		MaxRetries:   2,
+		BaseBackoff:  1 * time.Millisecond,
+		RateLimitRPS: 1, // 1s refill
+		RateBurst:    1,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	_, err = pStrict.SearchFlights(ctx, sampleCriteria())
+	if !errors.Is(err, domain.ErrProviderUnavailable) {
+		t.Fatalf("expected ErrProviderUnavailable when retry rate limit times out, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "context deadline") {
+		t.Fatalf("expected rate limiter context deadline message, got %v", err)
+	}
+	if got := stubFail.calls.Load(); got != 1 {
+		t.Fatalf("expected attempt 2 blocked at limiter before provider call, got %d calls", got)
+	}
+}
+
+func TestResilientProviderWrapsUnavailableOnCancellation(t *testing.T) {
+	stub := &stubProvider{
+		name: "Garuda Indonesia",
+		handler: func(_ context.Context, _ int32) ([]domain.Flight, error) {
+			return nil, errors.New("temporary failure")
+		},
+	}
+
+	p := NewResilientProvider(stub, ResiliencePolicy{
+		Timeout:     50 * time.Millisecond,
+		MaxRetries:  2,
+		BaseBackoff: 100 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := p.SearchFlights(ctx, sampleCriteria())
+	if !errors.Is(err, domain.ErrProviderUnavailable) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected both ErrProviderUnavailable and context.Canceled, got %v", err)
+	}
+}
+
+func TestResilientProviderFailsFastOnPermanentErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "domain permanent sentinel",
+			err:  fmt.Errorf("%w: bad credentials", domain.ErrProviderPermanent),
+		},
+		{
+			name: "json syntax decode error",
+			err:  json.Unmarshal([]byte("{bad"), new(map[string]any)),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			stub := &stubProvider{
+				name: "Batik Air",
+				handler: func(_ context.Context, _ int32) ([]domain.Flight, error) {
+					return nil, tc.err
+				},
+			}
+			p := NewResilientProvider(stub, ResiliencePolicy{
+				Timeout:     100 * time.Millisecond,
+				MaxRetries:  3,
+				BaseBackoff: 5 * time.Millisecond,
+			})
+
+			_, err := p.SearchFlights(context.Background(), sampleCriteria())
+			if !errors.Is(err, domain.ErrProviderUnavailable) {
+				t.Fatalf("expected ErrProviderUnavailable wrapper, got %v", err)
+			}
+			if got := stub.calls.Load(); got != 1 {
+				t.Fatalf("expected fail-fast with 1 attempt (no retries), got %d", got)
+			}
+		})
 	}
 }

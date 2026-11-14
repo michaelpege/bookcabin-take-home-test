@@ -40,6 +40,28 @@ func ParseTimestamp(raw, tzName string) (time.Time, error) {
 	return t, nil
 }
 
+// MatchesDepartureDate parses rawDepTime (using explicit tzName when naive), converts
+// timestamps into the origin airport's local timezone when known, and checks whether
+// the resulting local YYYY-MM-DD matches targetDate.
+func MatchesDepartureDate(rawDepTime, tzName, originAirport, targetDate string) bool {
+	target := strings.TrimSpace(targetDate)
+	if target == "" {
+		return true
+	}
+	t, err := ParseTimestamp(rawDepTime, tzName)
+	if err != nil {
+		return false
+	}
+	if strings.TrimSpace(tzName) != "" {
+		if loc, locErr := LoadLocation(tzName); locErr == nil {
+			t = t.In(loc)
+		}
+	} else if loc, locErr := AirportLocation(originAirport); locErr == nil {
+		t = t.In(loc)
+	}
+	return t.Format("2006-01-02") == target
+}
+
 // ParseDurationMinutes parses human duration strings such as "1h 45m", "3h 5m", "55m", or "2h".
 func ParseDurationMinutes(raw string) (int, error) {
 	s := strings.ToLower(strings.TrimSpace(raw))

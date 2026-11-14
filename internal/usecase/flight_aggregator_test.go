@@ -128,3 +128,89 @@ func TestFlightAggregatorReturnsErrorWhenAllProvidersFail(t *testing.T) {
 		t.Fatalf("expected 2 provider errors recorded, got %+v", res.Metadata.ProviderErrors)
 	}
 }
+
+func TestSearchFlightsPreservesComparisonAndScoreUnderFiltering(t *testing.T) {
+	discardLog := slog.New(slog.NewJSONHandler(io.Discard, nil))
+	providers := []domain.FlightProvider{
+		fakeProvider{
+			name: "Garuda Indonesia",
+			flights: []domain.Flight{
+				sampleFlight("GA400_Garuda", "Garuda Indonesia", "GA400", 1250000),
+				sampleFlight("GA410_Garuda", "Garuda Indonesia", "GA410", 1450000),
+			},
+		},
+		fakeProvider{
+			name:    "AirAsia",
+			flights: []domain.Flight{sampleFlight("QZ7250_AirAsia", "AirAsia", "QZ7250", 485000)},
+		},
+	}
+
+	agg := NewFlightAggregator(providers, discardLog)
+	minPrice := int64(1400000)
+	res, err := agg.SearchFlights(context.Background(), validCriteria(), SearchOptions{
+		Filters: domain.FilterOptions{
+			Airlines: []string{"Garuda Indonesia"},
+			MinPrice: &minPrice,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res.Flights) != 1 || res.Flights[0].FlightNumber != "GA410" {
+		t.Fatalf("expected only GA410 surviving filter, got %+v", res.Flights)
+	}
+	ga410 := res.Flights[0]
+	if ga410.PriceComparison == nil || ga410.PriceComparison.CheapestProvider != "AirAsia" ||
+		ga410.PriceComparison.CheapestAmount != 485000 || ga410.PriceComparison.ProviderCount != 2 {
+		t.Fatalf("expected full-market PriceComparison preserved after filter, got %+v", ga410.PriceComparison)
+	}
+	if ga410.BestValueScore == nil || *ga410.BestValueScore >= 1.0 {
+		t.Fatalf("expected market-relative BestValueScore < 1.0 for most expensive flight, got %v", ga410.BestValueScore)
+	}
+}
+
+func TestFlightAggregatorFiltersMismatchedProviderFlights(t *testing.T) {
+	wrongDest := sampleFlight("GA999_Garuda", "Garuda Indonesia", "GA999", 1000000)
+	wrongDest.Arrival.Airport = "SIN"
+	wrongCabin := sampleFlight("GA998_Garuda", "Garuda Indonesia", "GA998", 1000000)
+	wrongCabin.CabinClass = "business"
+	lowSeats := sampleFlight("GA997_Garuda", "Garuda Indonesia", "GA997", 1000000)
+	lowSeats.AvailableSeats = 1
+	validMatch := sampleFlight("GA400_Garuda", "Garuda Indonesia", "GA400", 1250000)
+	validMatch.AvailableSeats = 4
+
+	agg := NewFlightAggregator([]domain.FlightProvider{
+		fakeProvider{
+			name:    "Garuda Indonesia",
+			flights: []domain.Flight{wrongDest, wrongCabin, lowSeats, validMatch},
+		},
+	}, nil)
+
+	c := validCriteria()
+	c.Passengers = 2
+	res, err := agg.SearchFlights(context.Background(), c, SearchOptions{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res.Flights) != 1 || res.Flights[0].FlightNumber != "GA400" {
+		t.Fatalf("expected only criteria-matching flight GA400, got %+v", res.Flights)
+	}
+}
+
+func TestFlightAggregatorRejectsInvalidSortAndFilters(t *testing.T) {
+	agg := NewFlightAggregator(nil, nil)
+
+	if _, err := agg.SearchFlights(context.Background(), validCriteria(), SearchOptions{
+		SortBy: domain.SortBy("invalid_mode"),
+	}); !errors.Is(err, domain.ErrSearchInvalidCriteria) {
+		t.Fatalf("expected ErrSearchInvalidCriteria for invalid sortBy, got %v", err)
+	}
+
+	if _, err := agg.SearchFlights(context.Background(), validCriteria(), SearchOptions{
+		Filters: domain.FilterOptions{
+			DepartureWindow: &domain.TimeRange{Start: "99:99", End: "bad"},
+		},
+	}); !errors.Is(err, domain.ErrSearchInvalidCriteria) {
+		t.Fatalf("expected ErrSearchInvalidCriteria for malformed departure_window, got %v", err)
+	}
+}

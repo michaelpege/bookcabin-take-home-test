@@ -2,6 +2,7 @@ package garuda
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -94,8 +95,91 @@ func TestGarudaContractErrorHandling(t *testing.T) {
 			client := NewClient(WithDelay(0, 0), WithPayload([]byte(tc.payload)))
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			if _, err := client.SearchFlights(ctx, defaultCriteria()); err == nil {
-				t.Fatal("expected error, got nil")
+			_, err := client.SearchFlights(ctx, defaultCriteria())
+			if !errors.Is(err, domain.ErrProviderPermanent) {
+				t.Fatalf("expected ErrProviderPermanent, got %v", err)
+			}
+		})
+	}
+}
+
+func TestGarudaUTCDepartureDateTimezoneMatch(t *testing.T) {
+	// 2025-12-14T23:00:00Z is 2025-12-15T06:00:00+07:00 in Jakarta (CGK).
+	payload := `{
+		"status": "success",
+		"flights": [{
+			"flight_id": "GA400",
+			"airline": "Garuda Indonesia",
+			"airline_code": "GA",
+			"departure": {"airport": "CGK", "city": "Jakarta", "time": "2025-12-14T23:00:00Z"},
+			"arrival": {"airport": "DPS", "city": "Denpasar", "time": "2025-12-15T00:50:00Z"},
+			"duration_minutes": 110,
+			"stops": 0,
+			"price": {"amount": 1250000, "currency": "IDR"},
+			"available_seats": 10,
+			"fare_class": "economy"
+		}]
+	}`
+	client := NewClient(WithDelay(0, 0), WithPayload([]byte(payload)))
+	flights, err := client.SearchFlights(context.Background(), defaultCriteria())
+	if err != nil {
+		t.Fatalf("SearchFlights failed: %v", err)
+	}
+	if len(flights) != 1 || flights[0].FlightNumber != "GA400" {
+		t.Fatalf("expected UTC-crossing flight GA400 for CGK 2025-12-15, got %+v", flights)
+	}
+}
+
+func TestGarudaRejectsBrokenSegments(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name: "airport discontinuity",
+			payload: `{
+				"status": "success",
+				"flights": [{
+					"flight_id": "GA900", "airline": "Garuda Indonesia", "airline_code": "GA",
+					"departure": {"airport": "CGK", "time": "2025-12-15T10:00:00+07:00"},
+					"arrival": {"airport": "DPS", "time": "2025-12-15T15:00:00+08:00"},
+					"duration_minutes": 240, "price": {"amount": 1500000, "currency": "IDR"},
+					"available_seats": 5, "fare_class": "economy",
+					"segments": [
+						{"flight_number": "GA900", "departure": {"airport": "CGK", "time": "2025-12-15T10:00:00+07:00"}, "arrival": {"airport": "SUB", "time": "2025-12-15T11:30:00+07:00"}},
+						{"flight_number": "GA901", "departure": {"airport": "JOG", "time": "2025-12-15T13:00:00+07:00"}, "arrival": {"airport": "DPS", "time": "2025-12-15T15:00:00+08:00"}}
+					]
+				}]
+			}`,
+		},
+		{
+			name: "backward layover time",
+			payload: `{
+				"status": "success",
+				"flights": [{
+					"flight_id": "GA902", "airline": "Garuda Indonesia", "airline_code": "GA",
+					"departure": {"airport": "CGK", "time": "2025-12-15T10:00:00+07:00"},
+					"arrival": {"airport": "DPS", "time": "2025-12-15T15:00:00+08:00"},
+					"duration_minutes": 240, "price": {"amount": 1500000, "currency": "IDR"},
+					"available_seats": 5, "fare_class": "economy",
+					"segments": [
+						{"flight_number": "GA902", "departure": {"airport": "CGK", "time": "2025-12-15T10:00:00+07:00"}, "arrival": {"airport": "SUB", "time": "2025-12-15T12:00:00+07:00"}},
+						{"flight_number": "GA903", "departure": {"airport": "SUB", "time": "2025-12-15T11:30:00+07:00"}, "arrival": {"airport": "DPS", "time": "2025-12-15T15:00:00+08:00"}}
+					]
+				}]
+			}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client := NewClient(WithDelay(0, 0), WithPayload([]byte(tc.payload)))
+			flights, err := client.SearchFlights(context.Background(), defaultCriteria())
+			if err != nil {
+				t.Fatalf("SearchFlights returned unexpected error: %v", err)
+			}
+			if len(flights) != 0 {
+				t.Fatalf("expected invalid segment flight dropped, got %+v", flights)
 			}
 		})
 	}

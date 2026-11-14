@@ -68,14 +68,14 @@ func ScoreBestValue(flights []domain.Flight) {
 
 func inverseMinMax(val, minVal, maxVal float64) float64 {
 	if maxVal <= minVal {
-		return 1.0
+		return 0.5
 	}
 	return (maxVal - val) / (maxVal - minVal)
 }
 
 func directMinMax(val, minVal, maxVal float64) float64 {
 	if maxVal <= minVal {
-		return 1.0
+		return 0.5
 	}
 	return (val - minVal) / (maxVal - minVal)
 }

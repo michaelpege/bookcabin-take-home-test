@@ -132,6 +132,10 @@ func (f Flight) Validate() error {
 	if err := f.Duration.Validate(); err != nil {
 		return err
 	}
+	elapsedMinutes := int((f.Arrival.Timestamp - f.Departure.Timestamp) / 60)
+	if diff := f.Duration.TotalMinutes - elapsedMinutes; diff < -1 || diff > 1 {
+		return fmt.Errorf("%w: duration_minutes (%d) contradicts elapsed timestamp minutes (%d)", ErrFlightInvalid, f.Duration.TotalMinutes, elapsedMinutes)
+	}
 	if f.Stops < 0 {
 		return fmt.Errorf("%w: stops cannot be negative", ErrFlightInvalid)
 	}

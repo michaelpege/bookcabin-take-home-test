@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/michaelpege/bookcabin-take-home-test/internal/domain"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/platform/timeutil"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
 )
 
@@ -18,7 +19,7 @@ func (c *Client) SearchFlights(ctx context.Context, criteria domain.SearchCriter
 	headers := make(http.Header)
 	if c.auth != nil {
 		if err := c.auth.Apply(ctx, headers); err != nil {
-			return nil, fmt.Errorf("airasia auth: %w", err)
+			return nil, fmt.Errorf("%w: airasia auth: %w", domain.ErrProviderPermanent, err)
 		}
 	}
 
@@ -55,7 +56,7 @@ func buildWireParams(criteria domain.SearchCriteria) wireSearchRequest {
 
 func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req wireSearchRequest) ([]rawFlight, error) {
 	if c.auth != nil && len(headers) == 0 {
-		return nil, fmt.Errorf("airasia unauthorized: missing auth header")
+		return nil, fmt.Errorf("%w: airasia unauthorized: missing auth header", domain.ErrProviderPermanent)
 	}
 
 	if err := provider.SimulateDelay(ctx, c.minDelay, c.maxDelay); err != nil {
@@ -68,10 +69,10 @@ func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req 
 
 	var resp apiResponse
 	if err := json.Unmarshal(c.payload, &resp); err != nil {
-		return nil, fmt.Errorf("airasia decode response: %w", err)
+		return nil, fmt.Errorf("%w: airasia decode response: %w", domain.ErrProviderPermanent, err)
 	}
 	if !strings.EqualFold(resp.Status, "ok") {
-		return nil, fmt.Errorf("airasia contract error: unexpected status %q", resp.Status)
+		return nil, fmt.Errorf("%w: airasia contract error: unexpected status %q", domain.ErrProviderPermanent, resp.Status)
 	}
 
 	matched := make([]rawFlight, 0, len(resp.Flights))
@@ -90,7 +91,7 @@ func matchesWireRequest(rf rawFlight, req wireSearchRequest) bool {
 	if !strings.EqualFold(rf.ToAirport, req.Destination) {
 		return false
 	}
-	if req.DepartureDate != "" && !strings.HasPrefix(rf.DepartTime, req.DepartureDate) {
+	if req.DepartureDate != "" && !timeutil.MatchesDepartureDate(rf.DepartTime, "", rf.FromAirport, req.DepartureDate) {
 		return false
 	}
 	if req.CabinClass != "" && !strings.EqualFold(rf.CabinClass, req.CabinClass) {

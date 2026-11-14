@@ -116,3 +116,59 @@ func TestSortFlightsAllModes(t *testing.T) {
 		})
 	}
 }
+
+func TestScoreBestValueSingleFlightAndZeroSpread(t *testing.T) {
+	single := []domain.Flight{sampleFlight("GA400_Garuda", "Garuda Indonesia", "GA400", 1250000)}
+	ScoreBestValue(single)
+	if single[0].BestValueScore == nil || *single[0].BestValueScore != 0.5 {
+		t.Fatalf("expected neutral 0.5 score for single flight, got %v", single[0].BestValueScore)
+	}
+
+	identical := []domain.Flight{
+		sampleFlight("F1", "Garuda Indonesia", "GA400", 1000000),
+		sampleFlight("F2", "Lion Air", "JT740", 1000000),
+	}
+	ScoreBestValue(identical)
+	for i, f := range identical {
+		if f.BestValueScore == nil || *f.BestValueScore != 0.5 {
+			t.Fatalf("flight %d: expected neutral 0.5 score on zero-spread cohort, got %v", i, f.BestValueScore)
+		}
+	}
+}
+
+func TestComparePricesExactFlightAndScheduleBeforeMarketFallback(t *testing.T) {
+	gaA := sampleFlight("GA400_A", "OTA Alpha", "GA-400", 1250000)
+	gaB := sampleFlight("GA400_B", "OTA Beta", "GA 400", 1180000)
+	qz := sampleFlight("QZ520_C", "AirAsia", "QZ520", 650000)
+	qz.Departure.Timestamp = 1765748700
+	qz.Arrival.Timestamp = 1765754700
+
+	flights := []domain.Flight{gaA, gaB, qz}
+	ComparePrices(flights)
+
+	// GA400 entries match exact flight number across OTA Alpha & OTA Beta (not AirAsia QZ520).
+	if flights[0].PriceComparison == nil || flights[0].PriceComparison.CheapestProvider != "OTA Beta" ||
+		flights[0].PriceComparison.CheapestAmount != 1180000 || flights[0].PriceComparison.PriceDiff != 70000 ||
+		flights[0].PriceComparison.ProviderCount != 2 {
+		t.Fatalf("expected exact-flight comparison for GA400, got %+v", flights[0].PriceComparison)
+	}
+	// QZ520 falls back gracefully to route-market baseline across all 3 providers.
+	if flights[2].PriceComparison == nil || flights[2].PriceComparison.CheapestProvider != "AirAsia" ||
+		flights[2].PriceComparison.ProviderCount != 3 {
+		t.Fatalf("expected route-market fallback for QZ520, got %+v", flights[2].PriceComparison)
+	}
+
+	// Codeshares sharing exact schedule timestamps also group at Level 1.
+	cs1 := sampleFlight("CS1", "Garuda Indonesia", "GA400", 1300000)
+	cs2 := sampleFlight("CS2", "Partner Air", "PA9400", 1150000)
+	other := sampleFlight("QZ99", "AirAsia", "QZ524", 700000)
+	other.Departure.Timestamp = 1765767600
+	other.Arrival.Timestamp = 1765773900
+
+	csFlights := []domain.Flight{cs1, cs2, other}
+	ComparePrices(csFlights)
+	if csFlights[0].PriceComparison == nil || csFlights[0].PriceComparison.CheapestProvider != "Partner Air" ||
+		csFlights[0].PriceComparison.ProviderCount != 2 {
+		t.Fatalf("expected identical-schedule codeshare comparison, got %+v", csFlights[0].PriceComparison)
+	}
+}

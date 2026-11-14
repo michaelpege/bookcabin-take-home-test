@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -43,14 +44,9 @@ func (r *ResilientProvider) Name() string {
 	return r.next.Name()
 }
 
-// SearchFlights executes the wrapped provider with rate limiting, retries, and timeouts.
+// SearchFlights executes the wrapped provider with per-attempt rate limiting,
+// retries on transient errors, and timeouts.
 func (r *ResilientProvider) SearchFlights(ctx context.Context, criteria domain.SearchCriteria) ([]domain.Flight, error) {
-	if r.limiter != nil {
-		if err := r.limiter.Wait(ctx); err != nil {
-			return nil, fmt.Errorf("%s rate limit wait: %w", r.next.Name(), err)
-		}
-	}
-
 	attempts := r.policy.MaxRetries + 1
 	if attempts < 1 {
 		attempts = 1
@@ -59,7 +55,14 @@ func (r *ResilientProvider) SearchFlights(ctx context.Context, criteria domain.S
 	var lastErr error
 	for attempt := 0; attempt < attempts; attempt++ {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, r.wrapUnavailable("cancelled", err)
+		}
+
+		// Acquire a token before each physical attempt so retries cannot amplify upstream RPS.
+		if r.limiter != nil {
+			if err := r.limiter.Wait(ctx); err != nil {
+				return nil, r.wrapUnavailable("rate limit wait", err)
+			}
 		}
 
 		flights, err := r.runAttempt(ctx, criteria)
@@ -69,8 +72,12 @@ func (r *ResilientProvider) SearchFlights(ctx context.Context, criteria domain.S
 		lastErr = err
 
 		// Do not retry if the caller's parent context was cancelled or expired.
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, r.wrapUnavailable("cancelled", ctxErr)
+		}
+		// Fail fast on permanent contract, decode, or auth errors without burning retries.
+		if isPermanentProviderError(err) {
+			return nil, r.wrapUnavailable("permanent error", err)
 		}
 		if attempt == attempts-1 {
 			break
@@ -81,15 +88,28 @@ func (r *ResilientProvider) SearchFlights(ctx context.Context, criteria domain.S
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			return nil, ctx.Err()
+			return nil, r.wrapUnavailable("cancelled during backoff", ctx.Err())
 		case <-timer.C:
 		}
 	}
 
-	if errors.Is(lastErr, domain.ErrProviderUnavailable) {
-		return nil, lastErr
+	return nil, r.wrapUnavailable(fmt.Sprintf("failed after %d attempt(s)", attempts), lastErr)
+}
+
+func (r *ResilientProvider) wrapUnavailable(reason string, err error) error {
+	if errors.Is(err, domain.ErrProviderUnavailable) {
+		return err
 	}
-	return nil, fmt.Errorf("%w: %s: %v", domain.ErrProviderUnavailable, r.next.Name(), lastErr)
+	return fmt.Errorf("%w: %s %s: %w", domain.ErrProviderUnavailable, r.next.Name(), reason, err)
+}
+
+func isPermanentProviderError(err error) bool {
+	if errors.Is(err, domain.ErrProviderPermanent) {
+		return true
+	}
+	var syntaxErr *json.SyntaxError
+	var typeErr *json.UnmarshalTypeError
+	return errors.As(err, &syntaxErr) || errors.As(err, &typeErr)
 }
 
 func (r *ResilientProvider) runAttempt(ctx context.Context, criteria domain.SearchCriteria) ([]domain.Flight, error) {

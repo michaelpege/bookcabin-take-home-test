@@ -114,3 +114,32 @@ func TestBatikContractErrorHandling(t *testing.T) {
 		})
 	}
 }
+
+func TestBatikRejectsInvalidConnections(t *testing.T) {
+	payload := `{
+		"code": 200,
+		"message": "OK",
+		"results": [{
+			"flightNumber": "ID9999",
+			"airlineName": "Batik Air",
+			"airlineIATA": "ID",
+			"origin": "CGK",
+			"destination": "DPS",
+			"departureDateTime": "2025-12-15T07:15:00+0700",
+			"arrivalDateTime": "2025-12-15T12:15:00+0800",
+			"travelTime": "4h 0m",
+			"numberOfStops": 1,
+			"connections": [{"stopAirport": "", "stopDuration": "bad"}],
+			"fare": {"basePrice": 900000, "taxes": 100000, "totalPrice": 1000000, "currencyCode": "IDR", "class": "Y"},
+			"seatsAvailable": 10
+		}]
+	}`
+	client := NewClient(WithDelay(0, 0), WithPayload([]byte(payload)))
+	flights, err := client.SearchFlights(context.Background(), defaultCriteria())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(flights) != 0 {
+		t.Fatalf("expected flight with malformed connection dropped, got %+v", flights)
+	}
+}
