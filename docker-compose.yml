@@ -1,5 +1,8 @@
+name: bookcabin-flight-aggregator
+
 services:
   api:
+    container_name: bookcabin-api
     build:
       context: .
       dockerfile: Dockerfile
@@ -19,6 +22,7 @@ services:
       retries: 3
 
   redis:
+    container_name: bookcabin-redis
     image: redis:7-alpine
     ports:
       - "6379:6379"
