@@ -35,7 +35,7 @@ docs/                         # setup.md, infrastructure.md, architecture.md, ta
 
 - **Struct Field Ordering**: Order fields logically by domain concept (identity, route/schedule, duration, pricing, metadata) rather than alphabetically.
 - **Composable Validation**: Give value-object structs (`Airline`, `LocationPoint`, `DurationInfo`, `PriceInfo`) their own `Validate() error` methods and compose them inside the parent entity's `Validate()`, keeping cross-field invariants at the parent level.
-- **Error Placement**: Keep pure domain invariant errors in `internal/domain/errors.go`, and place boundary sentinel errors (`ErrCacheMiss`, `ErrProviderUnavailable`) in `internal/domain/cache.go` and `internal/domain/provider.go` next to the interfaces they belong to.
+- **Error Placement**: Consolidate domain and boundary sentinel errors in `internal/domain/errors.go`, grouped into separate `var (...)` blocks by category (validation vs boundary).
 - **Concise Stdlib Helpers**: Prefer clean, branch-free standard-library loops (e.g., `strings.Builder` with modulo grouping) over over-branched special cases.
 
 ## 4. Mandatory Verification Before Every Commit
