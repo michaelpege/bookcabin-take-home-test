@@ -10,8 +10,8 @@ Track commit-by-commit progress so any fresh agent session can resume immediatel
 | **C4** | Garuda Indonesia provider adapter + fixture tests | **Done** (PR #8) | `go test -race ./internal/provider/garuda/...` |
 | **C4.5** | Vertical E2E Slice: `usecase.Aggregator`, `POST /api/v1/flights/search` (Garuda), `trace_id` logs, 503 on total failure | **Done** (PR #10) | `go test -race ./...` + 100-curl Docker check |
 | **C5** | Lion Air provider adapter + fixture tests + `main.go` wiring | **Done** (PR #12) | `go test -race ./internal/provider/lion/...` |
-| **C6** | Batik Air provider adapter + fixture tests + shared `provider` helpers + `main.go` wiring | **PR Open** (Issue #13) | `go test -race ./internal/provider/batik/...` |
-| **C7** | AirAsia provider adapter (90% SLA simulation) + fixture tests | Pending | `go test -race ./internal/provider/airasia/...` |
+| **C6** | Batik Air provider adapter + fixture tests + shared `provider` helpers + `main.go` wiring | **Done** (PR #14) | `go test -race ./internal/provider/batik/...` |
+| **C7** | AirAsia provider adapter (90% SLA simulation) + fixture tests + `main.go` wiring | **PR Open** (Issue #15) | `go test -race ./internal/provider/airasia/...` |
 | **C8** | `internal/usecase` (filter, sorter, comparator, ranker + extract `fetchProviderOutcomes` in `aggregator.go`) + `-race` tests | Pending | `go test -race ./internal/usecase/...` |
 | **C9** | `internal/repository/redis` (2-tier write-through cache) + `POST /api/v1/flights/search` | Pending | `make check && make test-integration` |
 | **C10** | Final `README.md` (curl examples, complexity analysis, design choices) + benchmarks | Pending | `go test -bench=. ./...` |
