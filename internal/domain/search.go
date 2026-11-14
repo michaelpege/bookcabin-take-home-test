@@ -73,7 +73,7 @@ func (c SearchCriteria) Normalize() SearchCriteria {
 func (c SearchCriteria) Validate() error {
 	origin := strings.TrimSpace(c.Origin)
 	dest := strings.TrimSpace(c.Destination)
-	if len(origin) != 3 || len(dest) != 3 {
+	if !isValidIATACode(origin) || !isValidIATACode(dest) {
 		return fmt.Errorf("%w: origin and destination must be 3-letter IATA codes", ErrSearchInvalidCriteria)
 	}
 	if strings.EqualFold(origin, dest) {
@@ -101,6 +101,19 @@ func (c SearchCriteria) Validate() error {
 		return fmt.Errorf("%w: cabin_class is required", ErrSearchInvalidCriteria)
 	}
 	return nil
+}
+
+func isValidIATACode(code string) bool {
+	if len(code) != 3 {
+		return false
+	}
+	for i := 0; i < 3; i++ {
+		c := code[i]
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+			return false
+		}
+	}
+	return true
 }
 
 // TimeRange represents an inclusive HH:MM local time window (e.g., "06:00" to "12:00").

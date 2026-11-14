@@ -4,34 +4,39 @@ A Clean Architecture Go backend that concurrently aggregates, normalizes, valida
 
 ## Architecture & Key Design Choices
 
-```text
-HTTP Request (POST /api/v1/flights/search)
-  └─▶ internal/handler/http       (DTO decoding, trace_id logging middleware, panic recovery, 400/503 mapping)
-        └─▶ internal/usecase      (singleflight + L1/L2 cache, concurrent fan-out, Filter -> Compare -> Score -> Sort)
-              ├─▶ internal/domain (pure entities, Flight.Validate(), SearchCriteria, FlightProvider & FlightCache ports)
-              ├─▶ internal/provider/{garuda,lion,batik,airasia} + ResilientProvider (timeout, rate limit, retry + jitter)
-              └─▶ internal/repository/{redis,noop} (Redis 8 write-through cache, 200ms fail-open timeout)
+```mermaid
+flowchart LR
+    Client["Client"] -->|"POST /api/v1/flights/search"| Handler["HTTP Handler (net/http + middleware)"]
+    Handler -->|"SearchFlights()"| Usecase["FlightAggregator (singleflight + Pipeline)"]
+    Usecase -->|"FlightCache port"| Redis["Redis 8 (L1 2m / L2 5m, 200ms fail-open)"]
+    Usecase -->|"FlightProvider port"| Garuda["ResilientProvider -> Garuda (50-100ms)"]
+    Usecase -->|"FlightProvider port"| Lion["ResilientProvider -> Lion Air (100-200ms)"]
+    Usecase -->|"FlightProvider port"| Batik["ResilientProvider -> Batik Air (200-400ms)"]
+    Usecase -->|"FlightProvider port"| AirAsia["ResilientProvider -> AirAsia (50-150ms, 90% SLA)"]
 ```
 
-### Design Highlights
+*Dependency rule: `internal/domain` has zero internal imports; `internal/usecase` imports only `domain` and `platform`, keeping carrier adapters and Redis swappable behind interfaces. See [docs/architecture.md](docs/architecture.md) for the request sequence diagram and detailed trade-offs.*
 
-1. **Clean Architecture & Dependency Inversion**: `internal/domain` has zero internal imports; `internal/usecase` depends strictly on `domain.FlightProvider` and `domain.FlightCache` interfaces rather than concrete airline adapters or Redis drivers.
-2. **Per-Provider Resilience (`ResilientProvider`)**: Each carrier client is wrapped in a decorator enforcing token-bucket rate limiting (`golang.org/x/time/rate`), per-attempt timeouts, and exponential backoff retries with jitter:
+### Key Design Decisions
 
-| Airline Provider | Simulated API Latency & SLA | Timeout | Max Retries | Rate Limit (RPS / Burst) | Adapter Quirks Handled |
+| Decision | Choice | Why & Trade-off |
+| :--- | :--- | :--- |
+| **Clean Architecture** | `domain` ports + outer adapters | Isolates business rules from airline wire formats and Redis; adding a carrier needs one adapter + registration. |
+| **Partial-Failure Isolation** | `context.WithoutCancel` per provider (`10s` cap) | One slow or failing airline never cancels healthy peers; only total failure (`0` succeeded) returns HTTP `503`. |
+| **Provider Resilience** | Token bucket + timeout + jittered backoff | Rate limiter runs *before every attempt* to prevent retry RPS bursts; permanent auth/contract errors fail fast via `IsNonRetryableError`. |
+| **Two-Level Validation** | Adapter contract check + `Flight.Validate()` | Normalizers absorb per-carrier quirks (offsets, segments, units); domain invariants drop invalid records and return `400` on bad requests. |
+| **Two-Tier Cache + Fail-Open** | `L1` (`2m`) + `L2` (`5m`) + `singleflight.DoChan` | `L1` serves filter/sort tweaks at ~`0ms`; partial failures skip `L1` write-through while healthy carriers stay warm in `L2`; Redis (`200ms` timeout) fails open. |
+| **Pipeline Ordering** | `ComparePrices -> ScoreBestValue -> Filter -> Sort` | Price comparisons and value scores keep the route-wide baseline even when filtering to one airline or price band. |
+| **Best-Value Scoring** | Weighted min-max (`[0.0, 1.0]`) | Balances Price (`50%`), Duration (`30%`), Stops (`15%`), and Amenities (`5%`), using a `0.5` neutral fallback on zero spread. |
+
+### Provider Policies & Adapter Quirks
+
+| Airline Provider | Latency & SLA | Timeout | Retries | Rate Limit (RPS / Burst) | Adapter Quirks Handled |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Garuda Indonesia** | `50–100ms` (100%) | `500ms` | `1` | `50 / 10` | Multi-segment layovers (`GA315`), carrier-supplied baggage/amenities |
-| **Lion Air** | `100–200ms` (100%) | `600ms` | `1` | `40 / 10` | Naive datetimes converted with explicit IANA timezone offsets (`WIB`/`WITA`/`WIT`) |
-| **Batik Air** | `200–400ms` (100%) | `800ms` | `1` | `30 / 8` | Non-standard `+0700` offsets & cabin code `"Y"` → `"economy"` |
-| **AirAsia** | `50–150ms` (**90% SLA**) | `500ms` | `2` | `50 / 10` | Fractional hour durations (`4.33h` → `260m`), string baggage notes, retry on transient failure |
-
-3. **Isolated Partial-Failure Tolerance**: Provider goroutines derive isolated contexts (`context.WithoutCancel(ctx)` with parent deadline), so one carrier timing out or failing never aborts healthy peers. Only total failure across all providers returns HTTP `503 Service Unavailable`.
-4. **Two-Level Validation & Normalization**: Each provider normalizer validates raw carrier payloads against its own API contract (Level 1), then `domain.Flight.Validate()` enforces universal invariants (`Arrival > Departure`, `Duration > 0`, `Price > 0`, `Passengers >= 1`) in `usecase` (Level 2).
-5. **Two-Tier Redis Cache + `singleflight` + Fail-Open**:
-   - **L1 Base Cache** (`flight_search:{origin}:{dest}:{date}:{pax}:{cabin}`, default `2m` TTL): Caches validated post-aggregation flights *before* user filters/sorting so filter/sort queries serve in `~0ms` without re-querying providers.
-   - **L2 Per-Provider Cache** (`provider:{name}:{origin}:{dest}:{date}:{pax}:{cabin}`, default `5m` TTL): Caches each healthy carrier independently. When a search experiences partial failure (`providers_failed > 0`), **L1 write-through is skipped** while healthy providers remain cached in L2—subsequent retries only query the failed carrier.
-   - **Deduplication & Fail-Open**: Concurrent cold cache misses coalesce via `golang.org/x/sync/singleflight`. Redis commands enforce a `200ms` operation timeout and fail open to live provider queries if Redis is unavailable.
-6. **Best-Value Ranking**: Computes a `[0.0, 1.0]` `best_value_score` (rounded to 4 decimals) via min-max normalization across weighted signals: **Price (50%)**, **Duration (30%)**, **Stops (15%)**, and **Amenities count (5%)**.
+| **Garuda Indonesia** | `50-100ms` (100%) | `500ms` | `1` | `50 / 10` | Multi-segment layovers (`GA315`), carrier-supplied baggage/amenities |
+| **Lion Air** | `100-200ms` (100%) | `600ms` | `1` | `40 / 10` | Naive datetimes resolved via `WIB`/`WITA`/`WIT` timezone offsets |
+| **Batik Air** | `200-400ms` (100%) | `800ms` | `1` | `30 / 8` | Numeric `+0700` offsets & cabin code `"Y"` -> `"economy"` |
+| **AirAsia** | `50-150ms` (**90% SLA**) | `500ms` | `2` | `50 / 10` | Fractional hours (`4.33h` -> `260m`), baggage strings, transient retries |
 
 ---
 

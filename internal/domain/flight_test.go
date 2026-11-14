@@ -78,9 +78,56 @@ func TestSearchCriteriaValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "invalid airport code",
+			name:     "empty criteria (missing required fields)",
+			criteria: SearchCriteria{},
+			wantErr:  true,
+		},
+		{
+			name: "missing origin",
+			criteria: SearchCriteria{
+				Destination: "DPS", DepartureDate: "2025-12-15", Passengers: 1, CabinClass: "economy",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing destination",
+			criteria: SearchCriteria{
+				Origin: "CGK", DepartureDate: "2025-12-15", Passengers: 1, CabinClass: "economy",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing departure_date",
+			criteria: SearchCriteria{
+				Origin: "CGK", Destination: "DPS", Passengers: 1, CabinClass: "economy",
+			},
+			wantErr: true,
+		},
+		{
+			name: "missing cabin_class",
+			criteria: SearchCriteria{
+				Origin: "CGK", Destination: "DPS", DepartureDate: "2025-12-15", Passengers: 1,
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid airport code length",
 			criteria: SearchCriteria{
 				Origin: "CG", Destination: "DPS", DepartureDate: "2025-12-15", Passengers: 1, CabinClass: "economy",
+			},
+			wantErr: true,
+		},
+		{
+			name: "non-alpha airport code digits",
+			criteria: SearchCriteria{
+				Origin: "123", Destination: "DPS", DepartureDate: "2025-12-15", Passengers: 1, CabinClass: "economy",
+			},
+			wantErr: true,
+		},
+		{
+			name: "non-alpha airport code whitespace",
+			criteria: SearchCriteria{
+				Origin: "C G", Destination: "DPS", DepartureDate: "2025-12-15", Passengers: 1, CabinClass: "economy",
 			},
 			wantErr: true,
 		},

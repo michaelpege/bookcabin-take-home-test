@@ -64,6 +64,11 @@ func TestSearchFlightsEndpointValidation(t *testing.T) {
 		body string
 	}{
 		{name: "malformed json", body: `{`},
+		{name: "empty json object", body: `{}`},
+		{name: "missing origin", body: `{"destination":"DPS","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`},
+		{name: "missing destination", body: `{"origin":"CGK","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`},
+		{name: "missing departureDate", body: `{"origin":"CGK","destination":"DPS","passengers":1,"cabinClass":"economy"}`},
+		{name: "non-alpha iata code", body: `{"origin":"123","destination":"DPS","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`},
 		{name: "invalid criteria", body: `{"origin":"CGK","destination":"CGK","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`},
 	}
 
