@@ -14,7 +14,7 @@ func newTestLogger() *slog.Logger {
 }
 
 func TestPingEndpoint(t *testing.T) {
-	router := NewRouter(newTestLogger())
+	router := NewRouter(newTestLogger(), nil)
 	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
 	rec := httptest.NewRecorder()
 
@@ -37,7 +37,7 @@ func TestPingEndpoint(t *testing.T) {
 }
 
 func TestHealthEndpoint(t *testing.T) {
-	router := NewRouter(newTestLogger())
+	router := NewRouter(newTestLogger(), nil)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 
@@ -63,7 +63,7 @@ func TestHealthEndpoint(t *testing.T) {
 }
 
 func TestMethodNotAllowedOnPing(t *testing.T) {
-	router := NewRouter(newTestLogger())
+	router := NewRouter(newTestLogger(), nil)
 	req := httptest.NewRequest(http.MethodPost, "/ping", nil)
 	rec := httptest.NewRecorder()
 
