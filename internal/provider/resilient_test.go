@@ -19,7 +19,7 @@ type stubProvider struct {
 
 func (s *stubProvider) Name() string { return s.name }
 
-func (s *stubProvider) Search(ctx context.Context, _ domain.SearchCriteria) ([]domain.Flight, error) {
+func (s *stubProvider) SearchFlights(ctx context.Context, _ domain.SearchCriteria) ([]domain.Flight, error) {
 	n := s.calls.Add(1)
 	return s.handler(ctx, n)
 }
@@ -45,14 +45,14 @@ func TestResilientProviderRetriesAndSucceeds(t *testing.T) {
 		},
 	}
 
-	p := NewResilientProvider(stub, ProviderSLA{
+	p := NewResilientProvider(stub, ResiliencePolicy{
 		Timeout:     200 * time.Millisecond,
 		MaxRetries:  2,
 		BaseBackoff: 5 * time.Millisecond,
 		MaxBackoff:  15 * time.Millisecond,
 	})
 
-	flights, err := p.Search(context.Background(), sampleCriteria())
+	flights, err := p.SearchFlights(context.Background(), sampleCriteria())
 	if err != nil {
 		t.Fatalf("expected retry recovery, got error: %v", err)
 	}
@@ -72,13 +72,13 @@ func TestResilientProviderExhaustsRetries(t *testing.T) {
 		},
 	}
 
-	p := NewResilientProvider(stub, ProviderSLA{
+	p := NewResilientProvider(stub, ResiliencePolicy{
 		Timeout:     100 * time.Millisecond,
 		MaxRetries:  2,
 		BaseBackoff: 2 * time.Millisecond,
 	})
 
-	_, err := p.Search(context.Background(), sampleCriteria())
+	_, err := p.SearchFlights(context.Background(), sampleCriteria())
 	if !errors.Is(err, domain.ErrProviderUnavailable) {
 		t.Fatalf("expected ErrProviderUnavailable, got %v", err)
 	}
@@ -100,12 +100,12 @@ func TestResilientProviderEnforcesAttemptTimeout(t *testing.T) {
 		},
 	}
 
-	p := NewResilientProvider(stub, ProviderSLA{
+	p := NewResilientProvider(stub, ResiliencePolicy{
 		Timeout:    20 * time.Millisecond,
 		MaxRetries: 0,
 	})
 
-	_, err := p.Search(context.Background(), sampleCriteria())
+	_, err := p.SearchFlights(context.Background(), sampleCriteria())
 	if !errors.Is(err, domain.ErrProviderUnavailable) {
 		t.Fatalf("expected ErrProviderUnavailable on timeout, got %v", err)
 	}
@@ -119,21 +119,19 @@ func TestResilientProviderRespectsRateLimitAndParentCancel(t *testing.T) {
 		},
 	}
 
-	p := NewResilientProvider(stub, ProviderSLA{
+	p := NewResilientProvider(stub, ResiliencePolicy{
 		Timeout:      100 * time.Millisecond,
 		RateLimitRPS: 1,
 		RateBurst:    1,
 	})
 
-	// First call consumes the burst token immediately.
-	if _, err := p.Search(context.Background(), sampleCriteria()); err != nil {
+	if _, err := p.SearchFlights(context.Background(), sampleCriteria()); err != nil {
 		t.Fatalf("first call failed: %v", err)
 	}
 
-	// Second call with short parent deadline should fail waiting for rate limiter.
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
 	defer cancel()
-	if _, err := p.Search(ctx, sampleCriteria()); err == nil {
+	if _, err := p.SearchFlights(ctx, sampleCriteria()); err == nil {
 		t.Fatal("expected rate-limit context deadline error, got nil")
 	}
 }

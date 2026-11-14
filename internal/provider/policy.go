@@ -2,9 +2,9 @@ package provider
 
 import "time"
 
-// ProviderSLA defines per-airline resilience parameters for rate limiting,
-// per-attempt timeouts, and exponential backoff retries.
-type ProviderSLA struct {
+// ResiliencePolicy defines per-provider client resilience settings for
+// rate limiting, per-attempt timeouts, and exponential backoff retries.
+type ResiliencePolicy struct {
 	Timeout      time.Duration
 	MaxRetries   int
 	BaseBackoff  time.Duration
@@ -13,10 +13,10 @@ type ProviderSLA struct {
 	RateBurst    int
 }
 
-// DefaultSLAs returns sensible per-airline SLA defaults tuned to each provider's
+// DefaultPolicies returns per-airline resilience policies tuned to each provider's
 // expected latency and reliability profile.
-func DefaultSLAs() map[string]ProviderSLA {
-	return map[string]ProviderSLA{
+func DefaultPolicies() map[string]ResiliencePolicy {
+	return map[string]ResiliencePolicy{
 		"Garuda Indonesia": {
 			Timeout:      500 * time.Millisecond,
 			MaxRetries:   1,

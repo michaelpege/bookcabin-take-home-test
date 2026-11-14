@@ -10,8 +10,8 @@ import (
 
 // VerifyContract runs a shared behavioral contract suite against any domain.FlightProvider:
 // 1. Name() is non-empty
-// 2. Search() returns validated flights with non-nil Amenities
-// 3. Search() respects context cancellation promptly
+// 2. SearchFlights() returns validated flights with non-nil Amenities
+// 3. SearchFlights() respects context cancellation promptly
 func VerifyContract(t *testing.T, p domain.FlightProvider, criteria domain.SearchCriteria) {
 	t.Helper()
 
@@ -23,7 +23,7 @@ func VerifyContract(t *testing.T, p domain.FlightProvider, criteria domain.Searc
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		flights, err := p.Search(ctx, criteria)
+		flights, err := p.SearchFlights(ctx, criteria)
 		if err != nil {
 			t.Fatalf("expected successful search, got error: %v", err)
 		}
@@ -46,7 +46,7 @@ func VerifyContract(t *testing.T, p domain.FlightProvider, criteria domain.Searc
 
 		done := make(chan error, 1)
 		go func() {
-			_, err := p.Search(ctx, criteria)
+			_, err := p.SearchFlights(ctx, criteria)
 			done <- err
 		}()
 
