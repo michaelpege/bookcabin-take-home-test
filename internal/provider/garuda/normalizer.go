@@ -12,6 +12,10 @@ import (
 )
 
 func (rf rawFlight) toDomain(providerName string) (domain.Flight, error) {
+	if err := validateSegments(rf.FlightID, rf.Segments); err != nil {
+		return domain.Flight{}, err
+	}
+
 	depRaw, arrRaw, stops := resolveRouteEndpoints(rf)
 
 	depTime, err := timeutil.ParseTimestamp(depRaw.Time, "")
@@ -96,6 +100,47 @@ func resolveRouteEndpoints(rf rawFlight) (dep, arr rawEndpoint, stops int) {
 		first.City = rf.Departure.City
 	}
 	return first, last, len(rf.Segments) - 1
+}
+
+func validateSegments(flightID string, segments []rawSegment) error {
+	if len(segments) == 0 {
+		return nil
+	}
+	var prevArr time.Time
+	var prevAirport string
+	for i, seg := range segments {
+		if seg.DurationMinutes < 0 || seg.LayoverMinutes < 0 {
+			return fmt.Errorf("negative segment duration or layover for %s", flightID)
+		}
+		dep, err := timeutil.ParseTimestamp(seg.Departure.Time, "")
+		if err != nil {
+			return fmt.Errorf("parse segment %d departure for %s: %w", i, flightID, err)
+		}
+		arr, err := timeutil.ParseTimestamp(seg.Arrival.Time, "")
+		if err != nil {
+			return fmt.Errorf("parse segment %d arrival for %s: %w", i, flightID, err)
+		}
+		if !arr.After(dep) {
+			return fmt.Errorf("segment %d arrival not after departure for %s", i, flightID)
+		}
+		if i > 0 {
+			if !strings.EqualFold(prevAirport, seg.Departure.Airport) {
+				return fmt.Errorf("segment discontinuity for %s: %s -> %s", flightID, prevAirport, seg.Departure.Airport)
+			}
+			if dep.Before(prevArr) {
+				return fmt.Errorf("segment %d departs before previous segment arrival for %s", i, flightID)
+			}
+			if seg.LayoverMinutes > 0 {
+				actualLayover := int(dep.Sub(prevArr) / time.Minute)
+				if diff := actualLayover - seg.LayoverMinutes; diff < -1 || diff > 1 {
+					return fmt.Errorf("segment %d layover mismatch for %s: %dm vs %dm", i, flightID, seg.LayoverMinutes, actualLayover)
+				}
+			}
+		}
+		prevArr = arr
+		prevAirport = seg.Arrival.Airport
+	}
+	return nil
 }
 
 func formatPieces(count int) string {

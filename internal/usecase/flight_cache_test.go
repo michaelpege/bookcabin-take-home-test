@@ -245,3 +245,209 @@ func TestFlightAggregatorSingleflightCoalescesMisses(t *testing.T) {
 		t.Fatalf("expected singleflight to coalesce 8 misses into 1 provider call, got %d", got)
 	}
 }
+
+func TestFlightAggregatorSingleflightLeaderTimeoutDoesNotPoisonFollower(t *testing.T) {
+	cache := newMemoryTestCache()
+	p := &countingProvider{
+		name:  "Garuda Indonesia",
+		delay: 70 * time.Millisecond,
+		fn: func(_ int) ([]domain.Flight, error) {
+			return []domain.Flight{sampleFlight("GA1", "Garuda Indonesia", "GA400", 1250000)}, nil
+		},
+	}
+
+	agg := NewFlightAggregator([]domain.FlightProvider{p}, nil, WithCache(cache))
+
+	leaderCtx, leaderCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer leaderCancel()
+	followerCtx, followerCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer followerCancel()
+
+	type outcome struct {
+		res domain.SearchResult
+		err error
+	}
+	leaderCh := make(chan outcome, 1)
+	followerCh := make(chan outcome, 1)
+
+	go func() {
+		res, err := agg.SearchFlights(leaderCtx, validCriteria(), SearchOptions{})
+		leaderCh <- outcome{res: res, err: err}
+	}()
+	time.Sleep(5 * time.Millisecond)
+	go func() {
+		res, err := agg.SearchFlights(followerCtx, validCriteria(), SearchOptions{})
+		followerCh <- outcome{res: res, err: err}
+	}()
+
+	lOut := <-leaderCh
+	if !errors.Is(lOut.err, context.DeadlineExceeded) {
+		t.Fatalf("expected leader to abort with DeadlineExceeded, got %v", lOut.err)
+	}
+	fOut := <-followerCh
+	if fOut.err != nil {
+		t.Fatalf("expected healthy follower to succeed despite leader timeout, got %v", fOut.err)
+	}
+	if len(fOut.res.Flights) != 1 || fOut.res.Flights[0].FlightNumber != "GA400" {
+		t.Fatalf("unexpected follower flights: %+v", fOut.res.Flights)
+	}
+	if got := p.calls.Load(); got != 1 {
+		t.Fatalf("expected shared fetch (1 provider call), got %d", got)
+	}
+}
+
+func TestFlightAggregatorSingleflightFollowerTimeoutExitsEarly(t *testing.T) {
+	p := &countingProvider{
+		name:  "Garuda Indonesia",
+		delay: 120 * time.Millisecond,
+		fn: func(_ int) ([]domain.Flight, error) {
+			return []domain.Flight{sampleFlight("GA1", "Garuda Indonesia", "GA400", 1250000)}, nil
+		},
+	}
+
+	agg := NewFlightAggregator([]domain.FlightProvider{p}, nil)
+
+	leaderCtx, leaderCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer leaderCancel()
+	followerCtx, followerCancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer followerCancel()
+
+	type outcome struct {
+		elapsed time.Duration
+		res     domain.SearchResult
+		err     error
+	}
+	leaderCh := make(chan outcome, 1)
+	followerCh := make(chan outcome, 1)
+
+	go func() {
+		start := time.Now()
+		res, err := agg.SearchFlights(leaderCtx, validCriteria(), SearchOptions{})
+		leaderCh <- outcome{elapsed: time.Since(start), res: res, err: err}
+	}()
+	time.Sleep(5 * time.Millisecond)
+	go func() {
+		start := time.Now()
+		res, err := agg.SearchFlights(followerCtx, validCriteria(), SearchOptions{})
+		followerCh <- outcome{elapsed: time.Since(start), res: res, err: err}
+	}()
+
+	fOut := <-followerCh
+	if !errors.Is(fOut.err, context.DeadlineExceeded) {
+		t.Fatalf("expected follower DeadlineExceeded, got %v", fOut.err)
+	}
+	if fOut.elapsed >= 80*time.Millisecond {
+		t.Fatalf("expected follower to exit early without waiting for 120ms leader, took %v", fOut.elapsed)
+	}
+
+	lOut := <-leaderCh
+	if lOut.err != nil || len(lOut.res.Flights) != 1 {
+		t.Fatalf("expected leader to complete cleanly, got err=%v flights=%d", lOut.err, len(lOut.res.Flights))
+	}
+}
+
+func TestFlightAggregatorCanonicalizesCriteriaAndDedupsReturnDateCacheKeys(t *testing.T) {
+	cache := newMemoryTestCache()
+	p := &countingProvider{
+		name: "Garuda Indonesia",
+		fn: func(_ int) ([]domain.Flight, error) {
+			return []domain.Flight{sampleFlight("GA1", "Garuda Indonesia", "GA400", 1250000)}, nil
+		},
+	}
+	agg := NewFlightAggregator([]domain.FlightProvider{p}, nil, WithCache(cache))
+
+	ret1 := "2025-12-20"
+	c1 := domain.SearchCriteria{
+		Origin:        " cgk ",
+		Destination:   " dps ",
+		DepartureDate: "2025-12-15",
+		ReturnDate:    &ret1,
+		Passengers:    1,
+		CabinClass:    " ECONOMY ",
+	}
+	res1, err := agg.SearchFlights(context.Background(), c1, SearchOptions{})
+	if err != nil {
+		t.Fatalf("first search failed: %v", err)
+	}
+	if res1.SearchCriteria.Origin != "CGK" || res1.SearchCriteria.Destination != "DPS" || res1.SearchCriteria.CabinClass != "economy" {
+		t.Fatalf("expected canonicalized SearchCriteria echoed, got %+v", res1.SearchCriteria)
+	}
+
+	ret2 := "2025-12-25"
+	c2 := validCriteria()
+	c2.ReturnDate = &ret2
+	res2, err := agg.SearchFlights(context.Background(), c2, SearchOptions{})
+	if err != nil {
+		t.Fatalf("second search failed: %v", err)
+	}
+	if !res2.Metadata.CacheHit {
+		t.Fatalf("expected L1 cache hit across distinct return_date values")
+	}
+	if res2.SearchCriteria.ReturnDate == nil || *res2.SearchCriteria.ReturnDate != "2025-12-25" {
+		t.Fatalf("expected caller's return_date preserved on cache hit, got %v", res2.SearchCriteria.ReturnDate)
+	}
+	if got := p.calls.Load(); got != 1 {
+		t.Fatalf("expected 1 provider call total, got %d", got)
+	}
+}
+
+func TestFlightAggregatorDeepClonesCoalescedResults(t *testing.T) {
+	aircraft := "Boeing 737"
+	f := sampleFlight("GA1", "Garuda Indonesia", "GA400", 1250000)
+	f.Aircraft = &aircraft
+	f.Amenities = []string{"wifi", "meal"}
+
+	p1 := &countingProvider{
+		name:  "Garuda Indonesia",
+		delay: 30 * time.Millisecond,
+		fn: func(_ int) ([]domain.Flight, error) {
+			return []domain.Flight{f}, nil
+		},
+	}
+	p2 := &countingProvider{
+		name:  "Lion Air",
+		delay: 30 * time.Millisecond,
+		fn: func(_ int) ([]domain.Flight, error) {
+			return []domain.Flight{sampleFlight("JT1", "Lion Air", "JT740", 950000)}, nil
+		},
+	}
+
+	agg := NewFlightAggregator([]domain.FlightProvider{p1, p2}, nil)
+
+	const callers = 4
+	results := make([]domain.SearchResult, callers)
+	var wg sync.WaitGroup
+	for i := 0; i < callers; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			res, err := agg.SearchFlights(context.Background(), validCriteria(), SearchOptions{})
+			if err != nil {
+				t.Errorf("caller %d failed: %v", idx, err)
+				return
+			}
+			// Deliberately mutate caller-owned slices/pointers under -race.
+			for j := range res.Flights {
+				if len(res.Flights[j].Amenities) > 0 {
+					res.Flights[j].Amenities[0] = "mutated"
+				}
+				if res.Flights[j].Aircraft != nil {
+					*res.Flights[j].Aircraft = "mutated"
+				}
+				if res.Flights[j].BestValueScore != nil {
+					*res.Flights[j].BestValueScore = -1
+				}
+				if res.Flights[j].PriceComparison != nil {
+					res.Flights[j].PriceComparison.CheapestAmount = -1
+				}
+			}
+			results[idx] = res
+		}(i)
+	}
+	wg.Wait()
+	for idx, res := range results {
+		if len(res.Flights) != 2 {
+			t.Fatalf("caller %d expected 2 flights, got %d", idx, len(res.Flights))
+		}
+	}
+}

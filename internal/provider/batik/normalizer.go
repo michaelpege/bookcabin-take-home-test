@@ -56,6 +56,14 @@ func (rf rawFlight) toDomain(providerName string) (domain.Flight, error) {
 	if stops == 0 && len(rf.Connections) > 0 {
 		stops = len(rf.Connections)
 	}
+	for i, conn := range rf.Connections {
+		if strings.TrimSpace(conn.StopAirport) == "" {
+			return domain.Flight{}, fmt.Errorf("missing stopAirport on connection %d for %s", i, rf.FlightNumber)
+		}
+		if dur, err := timeutil.ParseDurationMinutes(conn.StopDuration); err != nil || dur <= 0 {
+			return domain.Flight{}, fmt.Errorf("invalid stopDuration %q on connection %d for %s", conn.StopDuration, i, rf.FlightNumber)
+		}
+	}
 
 	carryOn, checked := parseBaggageInfo(rf.BaggageInfo)
 

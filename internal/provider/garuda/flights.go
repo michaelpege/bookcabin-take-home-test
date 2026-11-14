@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/michaelpege/bookcabin-take-home-test/internal/domain"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/platform/timeutil"
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
 )
 
@@ -17,7 +18,7 @@ func (c *Client) SearchFlights(ctx context.Context, criteria domain.SearchCriter
 	headers := make(http.Header)
 	if c.auth != nil {
 		if err := c.auth.Apply(ctx, headers); err != nil {
-			return nil, fmt.Errorf("garuda auth: %w", err)
+			return nil, fmt.Errorf("%w: garuda auth: %w", domain.ErrProviderUnauthorized, err)
 		}
 	}
 
@@ -59,7 +60,7 @@ func buildWireParams(criteria domain.SearchCriteria) wireSearchRequest {
 // server-side query matching using wireReq.
 func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req wireSearchRequest) ([]rawFlight, error) {
 	if c.auth != nil && headers.Get("Authorization") == "" {
-		return nil, fmt.Errorf("garuda unauthorized: missing authorization header")
+		return nil, fmt.Errorf("%w: garuda unauthorized: missing authorization header", domain.ErrProviderUnauthorized)
 	}
 
 	if err := provider.SimulateDelay(ctx, c.minDelay, c.maxDelay); err != nil {
@@ -68,10 +69,10 @@ func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req 
 
 	var resp apiResponse
 	if err := json.Unmarshal(c.payload, &resp); err != nil {
-		return nil, fmt.Errorf("garuda decode response: %w", err)
+		return nil, fmt.Errorf("%w: garuda decode response: %w", domain.ErrProviderInvalidResponse, err)
 	}
 	if !strings.EqualFold(resp.Status, "success") {
-		return nil, fmt.Errorf("garuda contract error: unexpected status %q", resp.Status)
+		return nil, fmt.Errorf("%w: garuda contract error: unexpected status %q", domain.ErrProviderContract, resp.Status)
 	}
 
 	matched := make([]rawFlight, 0, len(resp.Flights))
@@ -91,7 +92,7 @@ func matchesWireRequest(rf rawFlight, req wireSearchRequest) bool {
 	if !strings.EqualFold(arr.Airport, req.Destination) {
 		return false
 	}
-	if req.DepartureDate != "" && !strings.HasPrefix(dep.Time, req.DepartureDate) {
+	if req.DepartureDate != "" && !timeutil.MatchesDepartureDate(dep.Time, "", dep.Airport, req.DepartureDate) {
 		return false
 	}
 	if req.CabinClass != "" && !strings.EqualFold(rf.FareClass, req.CabinClass) {

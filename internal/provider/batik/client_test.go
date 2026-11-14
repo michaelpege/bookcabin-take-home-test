@@ -2,6 +2,7 @@ package batik
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -98,9 +99,10 @@ func TestBatikContractErrorHandling(t *testing.T) {
 	tests := []struct {
 		name    string
 		payload string
+		wantErr error
 	}{
-		{name: "bad json", payload: `{invalid`},
-		{name: "non-200 status", payload: `{"code":500,"message":"upstream error","results":[]}`},
+		{name: "bad json", payload: `{invalid`, wantErr: domain.ErrProviderInvalidResponse},
+		{name: "non-200 status", payload: `{"code":500,"message":"upstream error","results":[]}`, wantErr: domain.ErrProviderContract},
 	}
 
 	for _, tc := range tests {
@@ -108,9 +110,39 @@ func TestBatikContractErrorHandling(t *testing.T) {
 			client := NewClient(WithDelay(0, 0), WithPayload([]byte(tc.payload)))
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			if _, err := client.SearchFlights(ctx, defaultCriteria()); err == nil {
-				t.Fatal("expected error, got nil")
+			_, err := client.SearchFlights(ctx, defaultCriteria())
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("expected %v, got %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestBatikRejectsInvalidConnections(t *testing.T) {
+	payload := `{
+		"code": 200,
+		"message": "OK",
+		"results": [{
+			"flightNumber": "ID9999",
+			"airlineName": "Batik Air",
+			"airlineIATA": "ID",
+			"origin": "CGK",
+			"destination": "DPS",
+			"departureDateTime": "2025-12-15T07:15:00+0700",
+			"arrivalDateTime": "2025-12-15T12:15:00+0800",
+			"travelTime": "4h 0m",
+			"numberOfStops": 1,
+			"connections": [{"stopAirport": "", "stopDuration": "bad"}],
+			"fare": {"basePrice": 900000, "taxes": 100000, "totalPrice": 1000000, "currencyCode": "IDR", "class": "Y"},
+			"seatsAvailable": 10
+		}]
+	}`
+	client := NewClient(WithDelay(0, 0), WithPayload([]byte(payload)))
+	flights, err := client.SearchFlights(context.Background(), defaultCriteria())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(flights) != 0 {
+		t.Fatalf("expected flight with malformed connection dropped, got %+v", flights)
 	}
 }

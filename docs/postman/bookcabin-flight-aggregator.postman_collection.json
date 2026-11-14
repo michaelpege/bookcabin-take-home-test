@@ -276,6 +276,36 @@
               "path": ["api", "v1", "flights", "search"]
             }
           }
+        },
+        {
+          "name": "7. Missing Required Fields (400 Bad Request)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () { pm.response.to.have.status(400); });",
+                  "pm.test('Error message returned', function () { pm.expect(pm.response.json().error).to.be.a('string'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"passengers\": 1,\n  \"cabinClass\": \"economy\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/flights/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "flights", "search"]
+            }
+          }
         }
       ]
     }

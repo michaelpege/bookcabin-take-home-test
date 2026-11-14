@@ -64,6 +64,11 @@ func TestSearchFlightsEndpointValidation(t *testing.T) {
 		body string
 	}{
 		{name: "malformed json", body: `{`},
+		{name: "empty json object", body: `{}`},
+		{name: "missing origin", body: `{"destination":"DPS","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`},
+		{name: "missing destination", body: `{"origin":"CGK","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`},
+		{name: "missing departureDate", body: `{"origin":"CGK","destination":"DPS","passengers":1,"cabinClass":"economy"}`},
+		{name: "non-alpha iata code", body: `{"origin":"123","destination":"DPS","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`},
 		{name: "invalid criteria", body: `{"origin":"CGK","destination":"CGK","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy"}`},
 	}
 
@@ -162,5 +167,44 @@ func TestSearchFlightsEndpointFiltersAndBestValueSort(t *testing.T) {
 		if f.BestValueScore == nil {
 			t.Fatalf("expected BestValueScore populated on %s", f.FlightNumber)
 		}
+	}
+}
+
+func TestSearchFlightsEndpointRejectsInvalidSortAndFilters(t *testing.T) {
+	log := newTestLogger()
+	agg := usecase.NewFlightAggregator(nil, log)
+	router := NewRouter(log, agg)
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "invalid sortBy",
+			body: `{"origin":"CGK","destination":"DPS","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy","sortBy":"invalid_mode"}`,
+		},
+		{
+			name: "malformed departure_window",
+			body: `{"origin":"CGK","destination":"DPS","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy","filters":{"departure_window":{"start":"99:99","end":"bad"}}}`,
+		},
+		{
+			name: "inverted min_price > max_price",
+			body: `{"origin":"CGK","destination":"DPS","departureDate":"2025-12-15","passengers":1,"cabinClass":"economy","filters":{"min_price":1000000,"max_price":500000}}`,
+		},
+		{
+			name: "returnDate before departureDate",
+			body: `{"origin":"CGK","destination":"DPS","departureDate":"2025-12-15","returnDate":"2025-12-10","passengers":1,"cabinClass":"economy"}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/flights/search", bytes.NewBufferString(tc.body))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400 Bad Request for %s, got %d: %s", tc.name, rec.Code, rec.Body.String())
+			}
+		})
 	}
 }

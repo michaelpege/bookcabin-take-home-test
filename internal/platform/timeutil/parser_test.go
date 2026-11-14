@@ -141,3 +141,60 @@ func TestDurationParsingAndFormatting(t *testing.T) {
 		t.Fatalf("expected 260 -> 4h 20m, got %q", fmtStr)
 	}
 }
+
+func TestMatchesDepartureDateTimezoneAwareness(t *testing.T) {
+	tests := []struct {
+		name       string
+		raw        string
+		tz         string
+		airport    string
+		targetDate string
+		want       bool
+	}{
+		{
+			name:       "utc midnight crossover matches jakarta next day",
+			raw:        "2025-12-14T23:00:00Z",
+			airport:    "CGK",
+			targetDate: "2025-12-15",
+			want:       true,
+		},
+		{
+			name:       "utc late evening is next day in jakarta",
+			raw:        "2025-12-15T22:00:00Z",
+			airport:    "CGK",
+			targetDate: "2025-12-15",
+			want:       false,
+		},
+		{
+			name:       "explicit wib offset matches local date",
+			raw:        "2025-12-15T06:00:00+07:00",
+			airport:    "CGK",
+			targetDate: "2025-12-15",
+			want:       true,
+		},
+		{
+			name:       "naive timestamp uses tzName",
+			raw:        "2025-12-15T05:30:00",
+			tz:         "Asia/Jakarta",
+			airport:    "CGK",
+			targetDate: "2025-12-15",
+			want:       true,
+		},
+		{
+			name:       "invalid timestamp returns false",
+			raw:        "not-a-timestamp",
+			airport:    "CGK",
+			targetDate: "2025-12-15",
+			want:       false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := MatchesDepartureDate(tc.raw, tc.tz, tc.airport, tc.targetDate); got != tc.want {
+				t.Fatalf("MatchesDepartureDate(%q, %q, %q, %q) = %v, want %v",
+					tc.raw, tc.tz, tc.airport, tc.targetDate, got, tc.want)
+			}
+		})
+	}
+}

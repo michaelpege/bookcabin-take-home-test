@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,18 @@ func WithCacheTTLs(baseTTL, providerTTL time.Duration) AggregatorOption {
 	}
 }
 
+// WithUpstreamTimeout overrides the bounded singleflight upstream timeout used to
+// shield coalesced searches from any individual caller's short deadline.
+func WithUpstreamTimeout(d time.Duration) AggregatorOption {
+	return func(a *FlightAggregator) {
+		if d > 0 {
+			a.upstreamTimeout = d
+		}
+	}
+}
+
+const defaultUpstreamTimeout = 10 * time.Second
+
 // FlightAggregator orchestrates concurrent scatter-gather queries across
 // registered FlightProvider adapters with two-tier write-through caching.
 type FlightAggregator struct {
@@ -51,6 +64,7 @@ type FlightAggregator struct {
 	cache            domain.FlightCache
 	baseCacheTTL     time.Duration
 	providerCacheTTL time.Duration
+	upstreamTimeout  time.Duration
 	sfGroup          singleflight.Group
 	log              *slog.Logger
 }
@@ -62,6 +76,7 @@ func NewFlightAggregator(providers []domain.FlightProvider, log *slog.Logger, op
 		cache:            noopFlightCache{},
 		baseCacheTTL:     defaultBaseCacheTTL,
 		providerCacheTTL: defaultProviderCacheTTL,
+		upstreamTimeout:  defaultUpstreamTimeout,
 		log:              log,
 	}
 	for _, opt := range opts {
@@ -83,12 +98,20 @@ type baseSearchSnapshot struct {
 	meta    domain.SearchMetadata
 }
 
-// SearchFlights validates criteria, checks L1 cache or coalesces live provider fan-out,
-// then runs filtering, price comparison, best-value ranking, and sorting.
+// SearchFlights validates criteria and search options, checks L1 cache or coalesces
+// live provider fan-out, then runs price comparison, ranking, filtering, and sorting.
 func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.SearchCriteria, opts SearchOptions) (domain.SearchResult, error) {
 	if err := criteria.Validate(); err != nil {
 		return domain.SearchResult{}, err
 	}
+	if err := opts.Filters.Validate(); err != nil {
+		return domain.SearchResult{}, err
+	}
+	sortBy := domain.SortBy(strings.TrimSpace(string(opts.SortBy)))
+	if err := sortBy.Validate(); err != nil {
+		return domain.SearchResult{}, err
+	}
+	criteria = criteria.Normalize()
 
 	start := time.Now()
 	traceID := logger.TraceIDFromContext(ctx)
@@ -104,10 +127,15 @@ func (a *FlightAggregator) SearchFlights(ctx context.Context, criteria domain.Se
 		}, err
 	}
 
+	// Run ComparePrices and ScoreBestValue on the full aggregated cohort BEFORE FilterFlights.
+	// Keeping ComparePrices pre-filter ensures price_comparison baselines reflect the true
+	// route-wide market even when a user filters down to a single airline or narrow price band.
+	// Keeping ScoreBestValue pre-filter ensures a lone or sparse surviving flight retains its
+	// market-relative value score instead of inflating to 1.0 when competitors are filtered out.
+	ComparePrices(aggregated)
+	ScoreBestValue(aggregated)
 	filtered := FilterFlights(aggregated, opts.Filters)
-	ComparePrices(filtered)
-	ScoreBestValue(filtered)
-	SortFlights(filtered, opts.SortBy)
+	SortFlights(filtered, sortBy)
 
 	meta.CacheHit = cacheHit
 	meta.TotalResults = len(filtered)
@@ -127,19 +155,18 @@ func (a *FlightAggregator) loadAggregatedFlights(
 ) ([]domain.Flight, domain.SearchMetadata, bool, error) {
 	baseKey := baseSearchCacheKey(criteria)
 	if cached, found := a.getCachedBaseSearch(ctx, traceID, baseKey); found {
-		return cached.Flights, cached.Metadata, true, nil
+		return filterValidFlightsForCriteria(cached.Flights, criteria), cached.Metadata, true, nil
 	}
 
-	val, err, _ := a.sfGroup.Do(baseKey, func() (any, error) {
-		sfCtx := context.WithoutCancel(ctx)
-		if deadline, ok := ctx.Deadline(); ok {
-			var cancel context.CancelFunc
-			sfCtx, cancel = context.WithDeadline(sfCtx, deadline)
-			defer cancel()
-		}
+	ch := a.sfGroup.DoChan(baseKey, func() (any, error) {
+		// Detach the shared upstream fetch from the first caller's deadline/cancellation
+		// using an independent bounded timeout so a fast-failing leader never aborts
+		// healthy coalesced followers or prevents cache warming.
+		sfCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), a.upstreamTimeout)
+		defer cancel()
 
 		outcomes := a.fetchProviderOutcomes(sfCtx, traceID, criteria)
-		aggregated, meta := a.collectOutcomes(traceID, outcomes)
+		aggregated, meta := a.collectOutcomes(traceID, criteria, outcomes)
 
 		if len(a.providers) > 0 && meta.ProvidersSucceeded == 0 {
 			return baseSearchSnapshot{flights: aggregated, meta: meta}, domain.ErrAllProvidersFailed
@@ -153,11 +180,16 @@ func (a *FlightAggregator) loadAggregatedFlights(
 		return baseSearchSnapshot{flights: aggregated, meta: meta}, nil
 	})
 
-	snap, _ := val.(baseSearchSnapshot)
-	if err != nil {
-		return cloneFlights(snap.flights), snap.meta, false, err
+	select {
+	case <-ctx.Done():
+		return nil, domain.SearchMetadata{}, false, ctx.Err()
+	case res := <-ch:
+		snap, _ := res.Val.(baseSearchSnapshot)
+		if res.Err != nil {
+			return cloneFlights(snap.flights), cloneMetadata(snap.meta), false, res.Err
+		}
+		return cloneFlights(snap.flights), cloneMetadata(snap.meta), false, nil
 	}
-	return cloneFlights(snap.flights), snap.meta, false, nil
 }
 
 func (a *FlightAggregator) fetchProviderOutcomes(ctx context.Context, traceID string, criteria domain.SearchCriteria) []providerOutcome {
@@ -190,7 +222,7 @@ func (a *FlightAggregator) fetchProviderOutcomes(ctx context.Context, traceID st
 
 			flights, err := prov.SearchFlights(pCtx, criteria)
 			if err == nil {
-				validFlights := filterValidFlights(flights)
+				validFlights := filterValidFlightsForCriteria(flights, criteria)
 				a.setCachedProviderFlights(pCtx, traceID, prov.Name(), criteria, validFlights)
 				flights = validFlights
 			}
@@ -208,7 +240,7 @@ func (a *FlightAggregator) fetchProviderOutcomes(ctx context.Context, traceID st
 	return outcomes
 }
 
-func (a *FlightAggregator) collectOutcomes(traceID string, outcomes []providerOutcome) ([]domain.Flight, domain.SearchMetadata) {
+func (a *FlightAggregator) collectOutcomes(traceID string, criteria domain.SearchCriteria, outcomes []providerOutcome) ([]domain.Flight, domain.SearchMetadata) {
 	aggregated := make([]domain.Flight, 0)
 	providerErrors := make(map[string]string)
 	succeeded := 0
@@ -232,7 +264,7 @@ func (a *FlightAggregator) collectOutcomes(traceID string, outcomes []providerOu
 		}
 
 		succeeded++
-		validFlights := filterValidFlights(out.flights)
+		validFlights := filterValidFlightsForCriteria(out.flights, criteria)
 		aggregated = append(aggregated, validFlights...)
 
 		if a.log != nil {
@@ -325,7 +357,7 @@ func (a *FlightAggregator) getCachedProviderFlights(ctx context.Context, traceID
 	if err := json.Unmarshal(raw, &flights); err != nil {
 		return nil, false
 	}
-	return filterValidFlights(flights), true
+	return filterValidFlightsForCriteria(flights, criteria), true
 }
 
 func (a *FlightAggregator) setCachedProviderFlights(ctx context.Context, traceID, providerName string, criteria domain.SearchCriteria, flights []domain.Flight) {
