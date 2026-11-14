@@ -53,8 +53,8 @@ func TestFlightValidate(t *testing.T) {
 			f := validFlight()
 			tc.mutate(&f)
 			err := f.Validate()
-			if tc.wantErr && !errors.Is(err, ErrInvalidFlight) {
-				t.Fatalf("expected ErrInvalidFlight, got %v", err)
+			if tc.wantErr && !errors.Is(err, ErrFlightInvalid) {
+				t.Fatalf("expected ErrFlightInvalid, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -109,8 +109,8 @@ func TestSearchCriteriaValidate(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.criteria.Validate()
-			if tc.wantErr && !errors.Is(err, ErrInvalidSearchCriteria) {
-				t.Fatalf("expected ErrInvalidSearchCriteria, got %v", err)
+			if tc.wantErr && !errors.Is(err, ErrSearchInvalidCriteria) {
+				t.Fatalf("expected ErrSearchInvalidCriteria, got %v", err)
 			}
 			if !tc.wantErr && err != nil {
 				t.Fatalf("unexpected error: %v", err)

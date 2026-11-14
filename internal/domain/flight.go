@@ -14,7 +14,7 @@ type Airline struct {
 // Validate checks that airline name and IATA code are present.
 func (a Airline) Validate() error {
 	if strings.TrimSpace(a.Name) == "" || strings.TrimSpace(a.Code) == "" {
-		return fmt.Errorf("%w: missing airline name or code", ErrInvalidFlight)
+		return fmt.Errorf("%w: missing airline name or code", ErrFlightInvalid)
 	}
 	return nil
 }
@@ -30,10 +30,10 @@ type LocationPoint struct {
 // Validate checks that airport code and positive timestamp are present.
 func (l LocationPoint) Validate() error {
 	if strings.TrimSpace(l.Airport) == "" {
-		return fmt.Errorf("%w: missing airport code", ErrInvalidFlight)
+		return fmt.Errorf("%w: missing airport code", ErrFlightInvalid)
 	}
 	if l.Timestamp <= 0 {
-		return fmt.Errorf("%w: timestamp must be positive", ErrInvalidFlight)
+		return fmt.Errorf("%w: timestamp must be positive", ErrFlightInvalid)
 	}
 	return nil
 }
@@ -47,7 +47,7 @@ type DurationInfo struct {
 // Validate checks that total duration is positive.
 func (d DurationInfo) Validate() error {
 	if d.TotalMinutes <= 0 {
-		return fmt.Errorf("%w: duration must be positive", ErrInvalidFlight)
+		return fmt.Errorf("%w: duration must be positive", ErrFlightInvalid)
 	}
 	return nil
 }
@@ -62,7 +62,7 @@ type PriceInfo struct {
 // Validate checks that price amount is positive and currency is specified.
 func (p PriceInfo) Validate() error {
 	if p.Amount <= 0 || strings.TrimSpace(p.Currency) == "" {
-		return fmt.Errorf("%w: price amount and currency must be valid", ErrInvalidFlight)
+		return fmt.Errorf("%w: price amount and currency must be valid", ErrFlightInvalid)
 	}
 	return nil
 }
@@ -106,13 +106,13 @@ type Flight struct {
 // checks with cross-field flight invariants.
 func (f Flight) Validate() error {
 	if strings.TrimSpace(f.ID) == "" {
-		return fmt.Errorf("%w: missing flight id", ErrInvalidFlight)
+		return fmt.Errorf("%w: missing flight id", ErrFlightInvalid)
 	}
 	if strings.TrimSpace(f.Provider) == "" {
-		return fmt.Errorf("%w: missing provider", ErrInvalidFlight)
+		return fmt.Errorf("%w: missing provider", ErrFlightInvalid)
 	}
 	if strings.TrimSpace(f.FlightNumber) == "" {
-		return fmt.Errorf("%w: missing flight_number", ErrInvalidFlight)
+		return fmt.Errorf("%w: missing flight_number", ErrFlightInvalid)
 	}
 	if err := f.Airline.Validate(); err != nil {
 		return err
@@ -124,22 +124,22 @@ func (f Flight) Validate() error {
 		return fmt.Errorf("arrival: %w", err)
 	}
 	if strings.EqualFold(f.Departure.Airport, f.Arrival.Airport) {
-		return fmt.Errorf("%w: origin and destination airport cannot match (%s)", ErrInvalidFlight, f.Departure.Airport)
+		return fmt.Errorf("%w: origin and destination airport cannot match (%s)", ErrFlightInvalid, f.Departure.Airport)
 	}
 	if f.Arrival.Timestamp <= f.Departure.Timestamp {
-		return fmt.Errorf("%w: arrival (%d) must be after departure (%d)", ErrInvalidFlight, f.Arrival.Timestamp, f.Departure.Timestamp)
+		return fmt.Errorf("%w: arrival (%d) must be after departure (%d)", ErrFlightInvalid, f.Arrival.Timestamp, f.Departure.Timestamp)
 	}
 	if err := f.Duration.Validate(); err != nil {
 		return err
 	}
 	if f.Stops < 0 {
-		return fmt.Errorf("%w: stops cannot be negative", ErrInvalidFlight)
+		return fmt.Errorf("%w: stops cannot be negative", ErrFlightInvalid)
 	}
 	if err := f.Price.Validate(); err != nil {
 		return err
 	}
 	if f.AvailableSeats < 0 {
-		return fmt.Errorf("%w: available_seats cannot be negative", ErrInvalidFlight)
+		return fmt.Errorf("%w: available_seats cannot be negative", ErrFlightInvalid)
 	}
 	return nil
 }

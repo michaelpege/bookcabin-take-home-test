@@ -36,19 +36,19 @@ func (c SearchCriteria) Validate() error {
 	origin := strings.TrimSpace(c.Origin)
 	dest := strings.TrimSpace(c.Destination)
 	if len(origin) != 3 || len(dest) != 3 {
-		return fmt.Errorf("%w: origin and destination must be 3-letter IATA codes", ErrInvalidSearchCriteria)
+		return fmt.Errorf("%w: origin and destination must be 3-letter IATA codes", ErrSearchInvalidCriteria)
 	}
 	if strings.EqualFold(origin, dest) {
-		return fmt.Errorf("%w: origin and destination cannot be the same", ErrInvalidSearchCriteria)
+		return fmt.Errorf("%w: origin and destination cannot be the same", ErrSearchInvalidCriteria)
 	}
 	if _, err := time.Parse("2006-01-02", strings.TrimSpace(c.DepartureDate)); err != nil {
-		return fmt.Errorf("%w: departure_date must be YYYY-MM-DD", ErrInvalidSearchCriteria)
+		return fmt.Errorf("%w: departure_date must be YYYY-MM-DD", ErrSearchInvalidCriteria)
 	}
 	if c.Passengers < 1 {
-		return fmt.Errorf("%w: passengers must be at least 1", ErrInvalidSearchCriteria)
+		return fmt.Errorf("%w: passengers must be at least 1", ErrSearchInvalidCriteria)
 	}
 	if strings.TrimSpace(c.CabinClass) == "" {
-		return fmt.Errorf("%w: cabin_class is required", ErrInvalidSearchCriteria)
+		return fmt.Errorf("%w: cabin_class is required", ErrSearchInvalidCriteria)
 	}
 	return nil
 }
