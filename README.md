@@ -59,4 +59,4 @@ make test-integration  # Run Redis integration tests (-tags=integration)
 - [docs/setup.md](docs/setup.md) — Local setup & environment variables
 - [docs/infrastructure.md](docs/infrastructure.md) — Containerization & Redis cache topology
 - [docs/architecture.md](docs/architecture.md) — Clean Architecture & design choices
-- [docs/PROGRESS.md](docs/PROGRESS.md) — Milestone progress tracker
+- [docs/tasks/1-bootstrap-mvp/progress.md](docs/tasks/1-bootstrap-mvp/progress.md) — Milestone progress tracker

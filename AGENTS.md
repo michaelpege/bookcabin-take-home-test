@@ -16,7 +16,7 @@ internal/repository/          # Data & cache adapters (redis, noop/memory)
                               # RULE: Implements domain.FlightCache; never imported by usecase
 internal/handler/http/        # HTTP transport, DTO mapping, request logging & recovery middleware
 internal/platform/            # Shared utilities (config, logger, timeutil, currency)
-docs/                         # setup.md, infrastructure.md, architecture.md, PROGRESS.md, decisions/
+docs/                         # setup.md, infrastructure.md, architecture.md, tasks/<issue>/progress.md, decisions/
 ```
 
 ## 2. Hard Invariants ("Never Break These")
@@ -61,4 +61,4 @@ make test-integration
 - [docs/setup.md](docs/setup.md) — Local Go/Docker/Redis setup & env vars
 - [docs/infrastructure.md](docs/infrastructure.md) — Container topology, cache keys, TTLs
 - [docs/architecture.md](docs/architecture.md) — Layer diagrams, resilience, best-value scoring
-- [docs/PROGRESS.md](docs/PROGRESS.md) — Milestone commit tracker for resuming work
+- [docs/tasks/1-bootstrap-mvp/progress.md](docs/tasks/1-bootstrap-mvp/progress.md) — Milestone commit tracker for resuming work
