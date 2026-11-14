@@ -1,9 +1,7 @@
 package lion
 
 import (
-	"context"
 	_ "embed"
-	"math/rand/v2"
 	"time"
 
 	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
@@ -67,26 +65,4 @@ func NewClient(opts ...Option) *Client {
 // Name returns the canonical provider name.
 func (c *Client) Name() string {
 	return c.name
-}
-
-func (c *Client) simulateDelay(ctx context.Context) error {
-	if c.maxDelay <= 0 {
-		return ctx.Err()
-	}
-	delay := c.minDelay
-	if spread := c.maxDelay - c.minDelay; spread > 0 {
-		delay += time.Duration(rand.Int64N(int64(spread) + 1))
-	}
-	if delay <= 0 {
-		return ctx.Err()
-	}
-
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
 }

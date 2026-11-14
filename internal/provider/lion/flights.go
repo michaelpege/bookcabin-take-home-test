@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/michaelpege/bookcabin-take-home-test/internal/domain"
+	"github.com/michaelpege/bookcabin-take-home-test/internal/provider"
 )
 
 // SearchFlights translates canonical criteria into Lion Air's wire contract (Stage A),
@@ -56,7 +57,7 @@ func (c *Client) fetchFromMockAPI(ctx context.Context, headers http.Header, req 
 		return nil, fmt.Errorf("lion unauthorized: missing auth header")
 	}
 
-	if err := c.simulateDelay(ctx); err != nil {
+	if err := provider.SimulateDelay(ctx, c.minDelay, c.maxDelay); err != nil {
 		return nil, fmt.Errorf("lion request cancelled: %w", err)
 	}
 
